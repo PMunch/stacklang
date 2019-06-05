@@ -10,6 +10,8 @@ type
       strVal: string
     of Float:
       floatVal: float
+  #Stack[T] {.borrow: [pop, `[]`, len, setLen].} = distinct seq[T]
+  Stack[T] = seq[T]
 
 proc `$`(element: Element): string =
   case element.kind:
@@ -17,20 +19,27 @@ proc `$`(element: Element): string =
   of String: $element.strVal
 
 var
-  stack: seq[Element]
+  stack: Stack[Element]
   cmdstack: seq[string]
   mkcmd = false
   customCommands = initTable[string, seq[string]]()
 
-template push[T](stack: var seq[T], value: T) =
-  stack.add value
+template push[T](stack: var Stack[T], value: T) =
+  seq[T](stack).add value
+
+proc `$`[T](stack: Stack[T]): string =
+  result = "["
+  for elem in stack:
+    result &= $elem & "  "
+  result.setLen(max(result.len - 1, 2))
+  result[^1] = ']'
 
 # Convenience template to execute an operation over two operands from the stack
-template execute[T](stack: var seq[T], operation: untyped): untyped {.dirty.} =
+template execute[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} =
   if stack[^1].kind != Float:
-    echo "Expected two floats but x is not a float"
+    echo "Expected two floats but x is not a float: ", stack[^1]
   elif stack[^2].kind != Float:
-    echo "Expected two floats but y is not a float"
+    echo "Expected two floats but y is not a float: ", stack[^2]
   else:
     let
       a = stack[^1].floatVal
@@ -40,7 +49,7 @@ template execute[T](stack: var seq[T], operation: untyped): untyped {.dirty.} =
 
 template simpleExecute[T](stack: var seq[T], operation: untyped): untyped {.dirty.} =
   if stack[^1].kind != Float:
-    echo "Expected a float but x is not a float"
+    echo "Expected a float but x is not a float: ", stack[^1]
   else:
     let a = stack.pop.floatVal
     stack.push(Element(kind: Float, floatVal: operation))
@@ -85,11 +94,21 @@ defineCommands(Commands, docstrings, runCommand):
     stack.insert(stack.pop, 0)
   Until = "until"; "Takes a label and a command and runs the command until the topmost element on the stack is the label":
     let
-      lbl = stack[^2].strVal
+      lbl = stack[^2]
       cmd = stack[^1].strVal
     stack.setLen(stack.len - 2)
-    # TODO: Figure out what's going on here
-    #while stack[^1]
+    case lbl.kind:
+    of Float:
+      if lbl.floatVal.int >= 0:
+        while stack.len != lbl.floatVal.int + 1:
+          runCmd(cmd, false)
+      else:
+        let prelen = stack.len
+        while stack.len != prelen + lbl.floatVal.int + 1:
+          runCmd(cmd, false)
+    of String:
+      while stack[^2].kind != String or stack[^2].strVal != lbl.strVal:
+        runCmd(cmd, false)
   MakeCommand = "mkcmd"; "Start defining a new command":
     mkcmd = true
     echo cmdstack
