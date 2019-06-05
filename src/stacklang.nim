@@ -27,15 +27,23 @@ template push[T](stack: var seq[T], value: T) =
 
 # Convenience template to execute an operation over two operands from the stack
 template execute[T](stack: var seq[T], operation: untyped): untyped {.dirty.} =
-  let
-    a = stack[^1].floatVal
-    b = stack[^2].floatVal
-  stack.setLen(stack.len - 2)
-  stack.push(Element(kind: Float, floatVal: operation))
+  if stack[^1].kind != Float:
+    echo "Expected two floats but x is not a float"
+  elif stack[^2].kind != Float:
+    echo "Expected two floats but y is not a float"
+  else:
+    let
+      a = stack[^1].floatVal
+      b = stack[^2].floatVal
+    stack.setLen(stack.len - 2)
+    stack.push(Element(kind: Float, floatVal: operation))
 
 template simpleExecute[T](stack: var seq[T], operation: untyped): untyped {.dirty.} =
-  let a = stack.pop.floatVal
-  stack.push(Element(kind: Float, floatVal: operation))
+  if stack[^1].kind != Float:
+    echo "Expected a float but x is not a float"
+  else:
+    let a = stack.pop.floatVal
+    stack.push(Element(kind: Float, floatVal: operation))
 
 # Then define all our commands using our macro
 defineCommands(Commands, docstrings, runCommand):
@@ -65,8 +73,8 @@ defineCommands(Commands, docstrings, runCommand):
     stack.execute(b mod a)
   Pop = "pop"; "Pops an element off the stack and discards it":
     discard stack.pop
-  Print = "print"; "Pops an element off the stack and prints it":
-    echo stack.pop
+  Print = "print"; "Prints the element on top off the stack without poping it":
+    echo stack[^1]
   StackSwap = "swap"; "Swaps the two bottom elements on the stack":
     let
       a = stack[^1]
@@ -75,6 +83,13 @@ defineCommands(Commands, docstrings, runCommand):
     stack[^2] = a
   StackRotate = "rot"; "Rotates the stack one level":
     stack.insert(stack.pop, 0)
+  Until = "until"; "Takes a label and a command and runs the command until the topmost element on the stack is the label":
+    let
+      lbl = stack[^2].strVal
+      cmd = stack[^1].strVal
+    stack.setLen(stack.len - 2)
+    # TODO: Figure out what's going on here
+    #while stack[^1]
   MakeCommand = "mkcmd"; "Start defining a new command":
     mkcmd = true
     echo cmdstack
@@ -116,8 +131,43 @@ proc runCmd(command: string, verbose = true) =
       discard
 
     if customCommands.hasKey(command):
-      for cmd in customCommands[command]:
-        runCmd(cmd, false)
+      let cc = customCommands[command]
+      var i = cc.low
+      while i <= cc.high:
+        echo "dbg: ", cc[i], " ", stack
+        case cc[i]:
+        of "goto":
+          # goto means read the label of the stack and go backwards through the
+          # command list until it's found
+          let destination = stack.pop
+          case destination.kind:
+          of String:
+            let label = destination.strVal
+            i -= 2
+            while cc[i] != label:
+              i -= 1
+          of Float:
+            let pos = destination.floatVal.int
+            if pos >= 0:
+              i = pos
+            else:
+              i -= pos
+        of "<":
+          let
+            a = stack[^2]
+            b = stack[^1]
+          stack.setLen(stack.len - 2)
+          if a.kind != b.kind:
+            echo "Can't compare ", a, " to ", b, " since they are of different types"
+          else:
+            case a.kind:
+            of Float:
+              if a.floatVal < b.floatVal: i += 1 else: i += 2
+            of String:
+              if a.strVal < b.strVal: i += 1 else: i += 2
+        else: discard
+        runCmd(cc[i], false)
+        i += 1
     else:
       try:
         stack.push Element(kind: Float, floatVal: parseFloat(command))
