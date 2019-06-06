@@ -23,6 +23,7 @@ var
   cmdstack: seq[string]
   mkcmd = false
   customCommands = initTable[string, seq[string]]()
+  variables = initTable[string, Element]()
 
 template push[T](stack: var Stack[T], value: T) =
   seq[T](stack).add value
@@ -82,8 +83,17 @@ defineCommands(Commands, docstrings, runCommand):
     stack.execute(b mod a)
   Pop = "pop"; "Pops an element off the stack and discards it":
     discard stack.pop
-  Print = "print"; "Prints the element on top off the stack without poping it":
+  Display = "display"; "Shows the element on top off the stack without poping it":
     echo stack[^1]
+  Print = "print"; "Takes a number of things, then prints those things in FIFO order with space separators":
+    if stack[^1].kind != Float:
+      echo "Must be passed a count"
+    else:
+      let count = stack.pop.floatVal.int
+      for i in stack.high-count+1..stack.high:
+        stdout.write $stack[i] & " "
+      echo ""
+      stack.setLen(stack.len - count)
   StackSwap = "swap"; "Swaps the two bottom elements on the stack":
     let
       a = stack[^1]
@@ -92,6 +102,21 @@ defineCommands(Commands, docstrings, runCommand):
     stack[^2] = a
   StackRotate = "rot"; "Rotates the stack one level":
     stack.insert(stack.pop, 0)
+  StackInsert = "insert"; "Takes an element and a number and inserts the element at that position in the stack":
+    let
+      el = stack[^2]
+      pos = stack[^1].floatVal.int
+    stack.setLen(stack.len - 2)
+    if pos >= 0:
+      stack.insert(el, pos)
+    else:
+      stack.insert(el, stack.len + pos)
+  Delete = "del"; "Deletes the element of the stack at a given position":
+    let pos = stack.pop.floatVal.int
+    if pos >= 0:
+      stack.delete(pos)
+    else:
+      stack.delete(stack.high + pos)
   Until = "until"; "Takes a label and a command and runs the command until the topmost element on the stack is the label":
     let
       lbl = stack[^2]
@@ -100,19 +125,39 @@ defineCommands(Commands, docstrings, runCommand):
     case lbl.kind:
     of Float:
       if lbl.floatVal.int >= 0:
-        while stack.len != lbl.floatVal.int + 1:
-          runCmd(cmd, false)
+        var runLast = false
+        while stack.len != lbl.floatVal.int and not runLast:
+          if stack.len == lbl.floatVal.int + 1:
+            runLast = true
+          runCmd(cmd)
       else:
         let prelen = stack.len
-        while stack.len != prelen + lbl.floatVal.int + 1:
-          runCmd(cmd, false)
+        var runLast = false
+        while stack.len != prelen + lbl.floatVal.int and not runLast:
+          if stack.len == lbl.floatVal.int + 1:
+            runLast = true
+          runCmd(cmd)
     of String:
       while stack[^2].kind != String or stack[^2].strVal != lbl.strVal:
-        runCmd(cmd, false)
+        runCmd(cmd)
+  Store = "store"; "Takes an element and a label and stores the element as a variable that can later be retrieved by load":
+    if stack[^1].kind != String:
+      echo "Last element on stack must be a label"
+    else:
+      variables[stack[^1].strVal] = stack[^2]
+      stack.setLen(stack.len - 2)
+  Load = "load"; "Takes a label and loads the variable by that name back onto the stack, removing the variable":
+    if stack[^1].kind != String:
+      echo "Last element on stack must be a label"
+    else:
+      if not variables.take(stack[^1].strVal, stack[^1]):
+        echo "No variable named ", stack[^1]
+  Dup = "dup"; "Duplicates the last element on the stack":
+    stack.push stack[^1]
+  Nop = "nop"; "Does nothing":
+    discard
   MakeCommand = "mkcmd"; "Start defining a new command":
     mkcmd = true
-    echo cmdstack
-    verbose = false
   DeleteCommand = "delcmd"; "Deletes the command given by the last label":
     let cmdName = stack.pop.strVal
     if customCommands.hasKey cmdName:
@@ -136,56 +181,89 @@ defineCommands(Commands, docstrings, runCommand):
     output.close()
     quit 0
 
+template compare[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} =
+  let
+    a = stack[^2]
+    b = stack[^1]
+  stack.setLen(stack.len - 2)
+  if a.kind != b.kind:
+    echo "Can't compare ", a, " to ", b, " since they are of different types"
+  else:
+    let condition =
+      if a.kind == Float:
+        operation(a.floatVal, b.floatVal)
+      else:
+        operation(a.strVal, b.strVal)
+    if operation(a.floatVal, b.floatVal):
+      i += 1
+      let oldi = i
+      runCmdCmd(cc, i, labelGotos)
+      if i == oldi:
+        i += 1
+    else:
+      i += 2
+      runCmdCmd(cc, i, labelGotos)
+
 # Program main loop, read input from stdin, run our template to parse the
 # command and run the corresponding operation. if that fails try to push it as
 # a number. Print out our "stack" for every iteration of the loop
 
-proc runCmd(command: string, verbose = true) =
+proc runCmd(command: string, verbose = false)
+
+proc runCmdCmd(cc: seq[string], i: var int, labelGotos: var CountTable[string]) =
+  case cc[i]:
+  of "goto":
+    try:
+      let destination = stack.pop
+      case destination.kind:
+      of String:
+        let label = destination.strVal
+        labelGotos.inc(label)
+        i = cc.find(label)
+      of Float:
+        let pos = destination.floatVal.int
+        if pos >= 0:
+          i = pos
+        else:
+          i -= pos
+      runCmdCmd(cc, i, labelGotos)
+    except:
+      echo getCurrentExceptionMsg()
+      raise
+  of "<":
+    stack.compare(`<`)
+  of ">":
+    stack.compare(`>`)
+  of "=":
+    stack.compare(`==`)
+  of "!=":
+    stack.compare(`!=`)
+  of "<=":
+    stack.compare(`<=`)
+  of ">=":
+    stack.compare(`>=`)
+  of "lblcnt":
+    stack.push Element(kind: Float, floatVal: labelGotos.getOrDefault(stack.pop().strVal, 0).float)
+    i += 1
+    runCmdCmd(cc, i, labelGotos)
+  else:
+    runCmd(cc[i], true)
+
+proc runCmd(command: string, verbose = false) =
   var verbose = verbose
   block runblock:
     try:
       runCommand(command)
       break runblock
-    except:
-      discard
+    except: discard
 
     if customCommands.hasKey(command):
       let cc = customCommands[command]
-      var i = cc.low
+      var
+        labelGotos = initCountTable[string]()
+        i = cc.low
       while i <= cc.high:
-        echo "dbg: ", cc[i], " ", stack
-        case cc[i]:
-        of "goto":
-          # goto means read the label of the stack and go backwards through the
-          # command list until it's found
-          let destination = stack.pop
-          case destination.kind:
-          of String:
-            let label = destination.strVal
-            i -= 2
-            while cc[i] != label:
-              i -= 1
-          of Float:
-            let pos = destination.floatVal.int
-            if pos >= 0:
-              i = pos
-            else:
-              i -= pos
-        of "<":
-          let
-            a = stack[^2]
-            b = stack[^1]
-          stack.setLen(stack.len - 2)
-          if a.kind != b.kind:
-            echo "Can't compare ", a, " to ", b, " since they are of different types"
-          else:
-            case a.kind:
-            of Float:
-              if a.floatVal < b.floatVal: i += 1 else: i += 2
-            of String:
-              if a.strVal < b.strVal: i += 1 else: i += 2
-        else: discard
-        runCmd(cc[i], false)
+        runCmdCmd(cc, i, labelGotos)
         i += 1
     else:
       try:
@@ -216,7 +294,11 @@ else:
 
 echo stack
 while true:
-  for command in stdin.readLine.split(" "):
+  let
+    commands = stdin.readLine
+    wasmkcmd = mkcmd
+  var madecmd = false
+  for command in commands.split(" "):
     if not mkcmd:
       runCmd(command)
     else:
@@ -239,9 +321,9 @@ while true:
         if valid:
           customCommands[name] = cmdstack
           echo name, " -> ", cmdstack
-          echo stack
           cmdstack = @[]
           mkcmd = false
+          madecmd = true
           continue
         else:
           cmdstack.push name
@@ -262,4 +344,7 @@ while true:
         echo "All other commands and numbers will be added to the command"
       else:
         cmdstack.add command
-      echo cmdstack
+  if (wasmkcmd or mkcmd) and not madecmd:
+    echo "c", cmdstack, " <- ", commands
+  else:
+    echo stack, " <- ", commands
