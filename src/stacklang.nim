@@ -181,6 +181,42 @@ defineCommands(Commands, docstrings, runCommand):
     output.close()
     quit 0
 
+defineCommands(InternalCommands, docstringsInternal, runInternalCommand):
+  Goto = "goto"; "Goes to the first instance of a label within a command":
+    try:
+      let destination = stack.pop
+      case destination.kind:
+      of String:
+        let label = destination.strVal
+        labelGotos.inc(label)
+        i = cc.find(label)
+      of Float:
+        let pos = destination.floatVal.int
+        if pos >= 0:
+          i = pos
+        else:
+          i -= pos
+      runCmdCmd(cc, i, labelGotos)
+    except:
+      echo getCurrentExceptionMsg()
+      raise
+  LessThan = "<"; "Compares two elements and if a<b it runs the next command, otherwise the second next command":
+    stack.compare(`<`)
+  MoreThan = ">"; "Compares two elements and if a>b it runs the next command, otherwise the second next command":
+    stack.compare(`>`)
+  Equal = "="; "Compares two elements and if a=b it runs the next command, otherwise the second next command":
+    stack.compare(`==`)
+  NotEqual = "!="; "Compares two elements and if a!=b it runs the next command, otherwise the second next command":
+    stack.compare(`!=`)
+  LessOrEqual = "<="; "Compares two elements and if a<=b it runs the next command, otherwise the second next command":
+    stack.compare(`<=`)
+  MoreOrEqual = ">="; "Compares two elements and if a>=b it runs the next command, otherwise the second next command":
+    stack.compare(`>=`)
+  LabelCount = "lblcnt"; "Takes a label and puts the amount of times that label has been the target of goto in this run of the command":
+    stack.push Element(kind: Float, floatVal: labelGotos.getOrDefault(stack.pop().strVal, 0).float)
+    i += 1
+    runCmdCmd(cc, i, labelGotos)
+
 template compare[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} =
   let
     a = stack[^2]
@@ -211,43 +247,12 @@ template compare[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} 
 proc runCmd(command: string, verbose = false)
 
 proc runCmdCmd(cc: seq[string], i: var int, labelGotos: var CountTable[string]) =
-  case cc[i]:
-  of "goto":
+  block runblock:
     try:
-      let destination = stack.pop
-      case destination.kind:
-      of String:
-        let label = destination.strVal
-        labelGotos.inc(label)
-        i = cc.find(label)
-      of Float:
-        let pos = destination.floatVal.int
-        if pos >= 0:
-          i = pos
-        else:
-          i -= pos
-      runCmdCmd(cc, i, labelGotos)
-    except:
-      echo getCurrentExceptionMsg()
-      raise
-  of "<":
-    stack.compare(`<`)
-  of ">":
-    stack.compare(`>`)
-  of "=":
-    stack.compare(`==`)
-  of "!=":
-    stack.compare(`!=`)
-  of "<=":
-    stack.compare(`<=`)
-  of ">=":
-    stack.compare(`>=`)
-  of "lblcnt":
-    stack.push Element(kind: Float, floatVal: labelGotos.getOrDefault(stack.pop().strVal, 0).float)
-    i += 1
-    runCmdCmd(cc, i, labelGotos)
-  else:
-    runCmd(cc[i], true)
+      runInternalCommand(cc[i])
+      break runblock
+    except: discard
+    runCmd(cc[i])
 
 proc runCmd(command: string, verbose = false) =
   var verbose = verbose
@@ -329,11 +334,13 @@ while true:
           cmdstack.push name
       of "pause":
         mkcmd = false
+        madecmd = true
       of "exit":
         mkcmd = false
+        madecmd = true
         cmdstack = @[]
       of "help":
-        echo "You are in command making mode"
+        echo "You are in command making mode, use these commands to create a command"
         echo "\tundo\tremoves the last entry from the command"
         echo "\tfin\tfinalizes the command. The last entry on the stack"
         echo "\t\tmust be a label and will be used as the command name"
@@ -341,7 +348,10 @@ while true:
         echo "\texit\texits the command making mode without making a command"
         echo "\tpause\texits the command making mode but stores the current"
         echo "\t\tcommand stack until you come back to command create mode"
-        echo "All other commands and numbers will be added to the command"
+        echo "Commands also have some control flow operators not otherwise available"
+        for command in InternalCommands:
+          echo "\t", command, "\t", docstringsInternal[command]
+        echo "All other commands and numbers will be added to the command and executed when it's run"
       else:
         cmdstack.add command
   if (wasmkcmd or mkcmd) and not madecmd:
