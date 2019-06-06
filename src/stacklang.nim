@@ -1,4 +1,4 @@
-import math, strutils, tables, os
+import math, strutils, tables, os, terminal
 import operations
 
 # First create a simple "stack" implementation
@@ -18,6 +18,10 @@ proc `$`(element: Element): string =
   of Float: $element.floatVal
   of String: $element.strVal
 
+template humanEcho(args: varargs[string, `$`]) =
+  if isatty(stdin):
+    echo(join args)
+
 var
   stack: Stack[Element]
   cmdstack: seq[string]
@@ -26,7 +30,7 @@ var
   variables = initTable[string, Element]()
 
 template push[T](stack: var Stack[T], value: T) =
-  seq[T](stack).add value
+  stack.add value
 
 proc `$`[T](stack: Stack[T]): string =
   result = "["
@@ -38,9 +42,9 @@ proc `$`[T](stack: Stack[T]): string =
 # Convenience template to execute an operation over two operands from the stack
 template execute[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} =
   if stack[^1].kind != Float:
-    echo "Expected two floats but x is not a float: ", stack[^1]
+    humanEcho "Expected two floats but x is not a float: ", stack[^1]
   elif stack[^2].kind != Float:
-    echo "Expected two floats but y is not a float: ", stack[^2]
+    humanEcho "Expected two floats but y is not a float: ", stack[^2]
   else:
     let
       a = stack[^1].floatVal
@@ -50,7 +54,7 @@ template execute[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} 
 
 template simpleExecute[T](stack: var seq[T], operation: untyped): untyped {.dirty.} =
   if stack[^1].kind != Float:
-    echo "Expected a float but x is not a float: ", stack[^1]
+    humanEcho "Expected a float but x is not a float: ", stack[^1]
   else:
     let a = stack.pop.floatVal
     stack.push(Element(kind: Float, floatVal: operation))
@@ -142,16 +146,16 @@ defineCommands(Commands, docstrings, runCommand):
         runCmd(cmd)
   Store = "store"; "Takes an element and a label and stores the element as a variable that can later be retrieved by load":
     if stack[^1].kind != String:
-      echo "Last element on stack must be a label"
+      humanEcho "Last element on stack must be a label"
     else:
       variables[stack[^1].strVal] = stack[^2]
       stack.setLen(stack.len - 2)
   Load = "load"; "Takes a label and loads the variable by that name back onto the stack, removing the variable":
     if stack[^1].kind != String:
-      echo "Last element on stack must be a label"
+      humanEcho "Last element on stack must be a label"
     else:
       if not variables.take(stack[^1].strVal, stack[^1]):
-        echo "No variable named ", stack[^1]
+        humanEcho "No variable named ", stack[^1]
   Dup = "dup"; "Duplicates the last element on the stack":
     stack.push stack[^1]
   Nop = "nop"; "Does nothing":
@@ -163,17 +167,17 @@ defineCommands(Commands, docstrings, runCommand):
     if customCommands.hasKey cmdName:
       customCommands.del cmdName
     else:
-      echo "No custom command with name ", cmdName, " found"
+      humanEcho "No custom command with name ", cmdName, " found"
   ListCommands = "lscmd"; "Lists all the custom commands":
-    echo "These are the currently defined custom commands"
+    humanEcho "These are the currently defined custom commands"
     for name, command in customCommands.pairs:
-      echo name, "\t", command
-    echo stack
+      humanEcho name & "\t" & command
+    humanEcho stack
     verbose = false
   Help = "help"; "Lists all the commands with documentation":
-    echo "Commands:"
+    humanEcho "Commands:"
     for command in Commands:
-      echo "\t", command, "\t", docstrings[command]
+      humanEcho "\t", command, "\t", docstrings[command]
   Exit = "exit"; "Exits the program, saving custom commands":
     var output = open("stacklang.custom", fmWrite)
     for name, command in customCommands.pairs:
@@ -223,14 +227,14 @@ template compare[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} 
     b = stack[^1]
   stack.setLen(stack.len - 2)
   if a.kind != b.kind:
-    echo "Can't compare ", a, " to ", b, " since they are of different types"
+    humanEcho "Can't compare ", a, " to ", b, " since they are of different types"
   else:
     let condition =
       if a.kind == Float:
         operation(a.floatVal, b.floatVal)
       else:
         operation(a.strVal, b.strVal)
-    if operation(a.floatVal, b.floatVal):
+    if condition: #operation(a.floatVal, b.floatVal):
       i += 1
       let oldi = i
       runCmdCmd(cc, i, labelGotos)
@@ -280,25 +284,25 @@ proc runCmd(command: string, verbose = false) =
           stack.push Element(kind: String, strVal: command)
         break runblock
   if verbose:
-    echo stack, " <- ", command
+    humanEcho stack, " <- ", command
 
-echo "Welcome to stacklang!"
-echo "This is a very simple stack based calculator/language that is a"
-echo "spiritual succesor to the greatness of the HP-41C. To add numbers or run"
-echo "commands simply type them here. You can also separate multiple numbers"
-echo "and commands by a space. You can also add text labels, and to add a"
-echo "label that has already been assigned to a custom command you can prefix"
-echo "it with a backslash. To see more of what you can do simply type 'help'"
+humanEcho "Welcome to stacklang!"
+humanEcho "This is a very simple stack based calculator/language that is a"
+humanEcho "spiritual succesor to the greatness of the HP-41C. To add numbers or run"
+humanEcho "commands simply type them here. You can also separate multiple numbers"
+humanEcho "and commands by a space. You can also add text labels, and to add a"
+humanEcho "label that has already been assigned to a custom command you can prefix"
+humanEcho "it with a backslash. To see more of what you can do simply type 'help'"
 if fileExists("stacklang.custom"):
   for line in "stacklang.custom".lines:
     let words = line.split(" ")
     customCommands[words[^1]] = words[0..^2]
-  echo "Custom commands loaded from stacklang.custom, to see them use lscmd"
+  humanEcho "Custom commands loaded from stacklang.custom, to see them use lscmd"
 else:
-  echo "No custom commands file found"
+  humanEcho "No custom commands file found"
 
-echo stack
-while true:
+humanEcho stack
+while not stdin.endOfFile:
   let
     commands = stdin.readLine
     wasmkcmd = mkcmd
@@ -315,17 +319,17 @@ while true:
         var valid = true
         try:
           discard parseEnum[Commands](name)
-          echo "Command name can't be one of the built-in commands"
+          humanEcho "Command name can't be one of the built-in commands"
           valid = false
         except: discard
         try:
           discard parseFloat(name)
-          echo "Command name can't be a valid float number"
+          humanEcho "Command name can't be a valid float number"
           valid = false
         except: discard
         if valid:
           customCommands[name] = cmdstack
-          echo name, " -> ", cmdstack
+          humanEcho name & " -> " & cmdstack
           cmdstack = @[]
           mkcmd = false
           madecmd = true
@@ -340,21 +344,21 @@ while true:
         madecmd = true
         cmdstack = @[]
       of "help":
-        echo "You are in command making mode, use these commands to create a command"
-        echo "\tundo\tremoves the last entry from the command"
-        echo "\tfin\tfinalizes the command. The last entry on the stack"
-        echo "\t\tmust be a label and will be used as the command name"
-        echo "\thelp\tshows this help message"
-        echo "\texit\texits the command making mode without making a command"
-        echo "\tpause\texits the command making mode but stores the current"
-        echo "\t\tcommand stack until you come back to command create mode"
-        echo "Commands also have some control flow operators not otherwise available"
+        humanEcho "You are in command making mode, use these commands to create a command"
+        humanEcho "\tundo\tremoves the last entry from the command"
+        humanEcho "\tfin\tfinalizes the command. The last entry on the stack"
+        humanEcho "\t\tmust be a label and will be used as the command name"
+        humanEcho "\thelp\tshows this help message"
+        humanEcho "\texit\texits the command making mode without making a command"
+        humanEcho "\tpause\texits the command making mode but stores the current"
+        humanEcho "\t\tcommand stack until you come back to command create mode"
+        humanEcho "Commands also have some control flow operators not otherwise available"
         for command in InternalCommands:
-          echo "\t", command, "\t", docstringsInternal[command]
-        echo "All other commands and numbers will be added to the command and executed when it's run"
+          humanEcho "\t", command, "\t", docstringsInternal[command]
+        humanEcho "All other commands and numbers will be added to the command and executed when it's run"
       else:
         cmdstack.add command
   if (wasmkcmd or mkcmd) and not madecmd:
-    echo "c", cmdstack, " <- ", commands
+    humanEcho "c" & cmdstack & " <- " & commands
   else:
-    echo stack, " <- ", commands
+    humanEcho $stack & " <- " & commands
