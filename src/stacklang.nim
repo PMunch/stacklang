@@ -1,4 +1,5 @@
 import math, strutils, tables, os, terminal
+import rdstdin
 import operations
 
 # First create a simple "stack" implementation
@@ -171,9 +172,14 @@ defineCommands(Commands, docstrings, runCommand):
   ListCommands = "lscmd"; "Lists all the custom commands":
     humanEcho "These are the currently defined custom commands"
     for name, command in customCommands.pairs:
-      humanEcho name & "\t" & command
+      humanEcho name & "\t" & command.join(" ")
     humanEcho stack
     verbose = false
+  Call = "call"; "Takes a label and runs it as a command":
+      if stack[^1].kind != String:
+        humanEcho "Call take a string"
+      else:
+        runCmd(stack.pop.strVal)
   Help = "help"; "Lists all the commands with documentation":
     humanEcho "Commands:"
     for command in Commands:
@@ -304,7 +310,7 @@ else:
 humanEcho stack
 while not stdin.endOfFile:
   let
-    commands = stdin.readLine
+    commands = readLineFromStdin("> ")
     wasmkcmd = mkcmd
   var madecmd = false
   for command in commands.split(" "):
@@ -329,7 +335,7 @@ while not stdin.endOfFile:
         except: discard
         if valid:
           customCommands[name] = cmdstack
-          humanEcho name & " -> " & cmdstack
+          humanEcho name & " -> [" & cmdstack.join(" ") & "]"
           cmdstack = @[]
           mkcmd = false
           madecmd = true
