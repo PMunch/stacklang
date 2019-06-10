@@ -1,4 +1,4 @@
-import math, strutils, tables, os, terminal
+import math, strutils, tables, os, terminal, random
 import rdstdin
 import operations
 
@@ -51,14 +51,14 @@ template execute[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} 
       a = stack[^1].floatVal
       b = stack[^2].floatVal
     stack.setLen(stack.len - 2)
-    stack.push(Element(kind: Float, floatVal: operation))
+    stack.push(Element(kind: Float, floatVal: float(operation)))
 
 template simpleExecute[T](stack: var seq[T], operation: untyped): untyped {.dirty.} =
   if stack[^1].kind != Float:
     humanEcho "Expected a float but x is not a float: ", stack[^1]
   else:
     let a = stack.pop.floatVal
-    stack.push(Element(kind: Float, floatVal: operation))
+    stack.push(Element(kind: Float, floatVal: float(operation)))
 
 # Then define all our commands using our macro
 defineCommands(Commands, docstrings, runCommand):
@@ -76,16 +76,42 @@ defineCommands(Commands, docstrings, runCommand):
     stack.execute(b.pow(a))
   Sine = "sin"; "Takes the sine of a number":
     stack.simpleExecute(sin(a))
+  HyperSine = "sinh"; "Takes the hyperbolic sine of a number":
+    stack.simpleExecute(sinh(a))
+  ArcSine = "arcsin"; "Takes the arc sine of a number":
+    stack.simpleExecute(arcsin(a))
+  InvHyperSine = "arcsinh"; "Takes the inverse hyperbolic sine of a number":
+    stack.simpleExecute(arcsinh(a))
   Cosine = "cos"; "Takes the cosine of a number":
     stack.simpleExecute(cos(a))
+  HyperCosine = "cosh"; "Takes the hyperbolic cosine of a number":
+    stack.simpleExecute(cosh(a))
+  ArcCosine = "arccos"; "Takes the arc cosine of a number":
+    stack.simpleExecute(arccos(a))
+  InvHyperCosine = "arccosh"; "Takes the inverse hyperbolic cosine of a number":
+    stack.simpleExecute(arccosh(a))
   Tangent = "tan"; "Takes the tangent of a number":
     stack.simpleExecute(tan(a))
+  HyperTangent = "tanh"; "Takes the hyperbolic tangent of a number":
+    stack.simpleExecute(tanh(a))
+  ArcTangent = "arctan"; "Takes the arc tangent of a number":
+    stack.simpleExecute(arctan(a))
+  InvHyperTangent = "arctanh"; "Takes the inverse hyperbolic tangent of a number":
+    stack.simpleExecute(arctanh(a))
   DegToRad = "dtr"; "Converts a number from degrees to radians":
     stack.simpleExecute(degToRad(a))
   RadToDeg = "rtd"; "Converts a number from radians to degrees":
     stack.simpleExecute(radToDeg(a))
   Modulo = "mod"; "Takes the modulo of one number over another":
     stack.execute(b mod a)
+  Binom = "binom"; "Computes the binomial coefficient":
+    stack.execute(binom(b.int, a.int))
+  Factorial = "fac"; "Computes the factorial of a non-negative number":
+    stack.simpleExecute(fac(a.int))
+  NatLogarithm = "ln"; "Computes the natural logarithm of a number":
+    stack.simpleExecute(ln(a))
+  Logarithm = "log"; "Computes the logarithm of the first number to the base of the second":
+    stack.execute(log(b, a))
   Pop = "pop"; "Pops an element off the stack and discards it":
     discard stack.pop
   Display = "display"; "Shows the element on top off the stack without poping it":
@@ -161,7 +187,7 @@ defineCommands(Commands, docstrings, runCommand):
     stack.push stack[^1]
   Nop = "nop"; "Does nothing":
     discard
-  MakeCommand = "mkcmd"; "Start defining a new command":
+  MakeCommand = "mkcmd"; "All elements until \"fin\" is encountered will be added to the stack, then when\n\t\t\"fin\" is encountered they will be turned into a command, and a randomly generated label will be pushed to the stack":
     mkcmd = true
   DeleteCommand = "delcmd"; "Deletes the command given by the last label":
     let cmdName = stack.pop.strVal
@@ -180,6 +206,18 @@ defineCommands(Commands, docstrings, runCommand):
         humanEcho "Call take a string"
       else:
         runCmd(stack.pop.strVal)
+  Name = "name"; "Takes a label, and a label to a custom command and renames the command to the first label":
+    let
+      name = stack[^2].strVal
+      cmd = stack[^1].strVal
+    stack.setLen(stack.len - 2)
+    try:
+      discard parseEnum[Commands](name)
+      humanEcho "Command name can't be one of the built-in commands"
+    except:
+      if customCommands.hasKey cmd:
+        customCommands[name] = customCommands[cmd]
+        customCommands.del cmd
   Help = "help"; "Lists all the commands with documentation":
     humanEcho "Commands:"
     for command in Commands:
@@ -250,19 +288,37 @@ template compare[T](stack: var Stack[T], operation: untyped): untyped {.dirty.} 
       i += 2
       runCmdCmd(cc, i, labelGotos)
 
-# Program main loop, read input from stdin, run our template to parse the
-# command and run the corresponding operation. if that fails try to push it as
-# a number. Print out our "stack" for every iteration of the loop
-
 proc runCmd(command: string, verbose = false)
 
 proc runCmdCmd(cc: seq[string], i: var int, labelGotos: var CountTable[string]) =
-  block runblock:
-    try:
-      runInternalCommand(cc[i])
-      break runblock
-    except: discard
+  try:
+    runInternalCommand(cc[i])
+  except:
     runCmd(cc[i])
+
+proc execute(commands: seq[string]) =
+  var
+    labelGotos = initCountTable[string]()
+    i = commands.low
+  while i <= commands.high:
+    if commands[i] == "mkcmd":
+      var newcmd: seq[string]
+      i += 1
+      while commands[i] != "fin":
+        if commands[i][0] == '\\':
+          newcmd.add commands[i][1..^1]
+        else:
+          newcmd.add commands[i]
+        i += 1
+      i += 1
+      var cmdname = "tmp" & align($rand(9999), 4, '0')
+      while cmdname in customCommands:
+        cmdname = "tmp" & align($rand(9999), 4, '0')
+      customCommands[cmdname] = newcmd
+      stack.push Element(kind: String, strVal: cmdname)
+    else:
+      runCmdCmd(commands, i, labelGotos)
+      i += 1
 
 proc runCmd(command: string, verbose = false) =
   var verbose = verbose
@@ -273,13 +329,7 @@ proc runCmd(command: string, verbose = false) =
     except: discard
 
     if customCommands.hasKey(command):
-      let cc = customCommands[command]
-      var
-        labelGotos = initCountTable[string]()
-        i = cc.low
-      while i <= cc.high:
-        runCmdCmd(cc, i, labelGotos)
-        i += 1
+      execute customCommands[command]
     else:
       try:
         stack.push Element(kind: Float, floatVal: parseFloat(command))
@@ -308,6 +358,7 @@ else:
   humanEcho "No custom commands file found"
 
 humanEcho stack
+#[
 while not stdin.endOfFile:
   let
     commands = readLineFromStdin("> ")
@@ -368,3 +419,8 @@ while not stdin.endOfFile:
     humanEcho "c" & cmdstack & " <- " & commands
   else:
     humanEcho $stack & " <- " & commands
+]#
+while true:
+  let commands = stdin.readLine().split(" ")
+  execute(commands)
+  echo stack, " <- ", commands
