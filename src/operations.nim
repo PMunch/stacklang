@@ -18,13 +18,14 @@ macro defineCommands*(enumName, docarrayName, runnerName,
         ),
         nnkBracket.newTree()))
     templateArgument = newIdentNode("command")
-    caseSwitch =  nnkCaseStmt.newTree(
-      nnkCall.newTree(
-        nnkBracketExpr.newTree(
-          newIdentNode("parseEnum"),
-          enumName
-        ),
-        templateArgument))
+    parseStmt = nnkCall.newTree(
+      nnkBracketExpr.newTree(
+        newIdentNode("parseEnum"),
+        enumName
+      ),
+      templateArgument)
+    parsedEnum = newIdentNode("parsedEnum")
+    caseSwitch =  nnkCaseStmt.newTree(parsedEnum)
   for i in countup(0, definitions.len - 1, 2):
     let
       enumInfo = definitions[i]
@@ -37,5 +38,14 @@ macro defineCommands*(enumName, docarrayName, runnerName,
   result = quote do:
     `enumDef`
     `docstrings`
-    template `runnerName`(`templateArgument`: untyped): untyped =
-      `caseSwitch`
+    template `runnerName`(`templateArgument`: untyped, parseFail: untyped): untyped =
+      block runnerBody:
+        var `parsedEnum`: `enumName`
+        try:
+          `parsedEnum` = `parseStmt`
+        except:
+          parseFail
+          break runnerBody
+        `caseSwitch`
+  when defined(echoOperations):
+    echo result.repr
