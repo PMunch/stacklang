@@ -14,3 +14,5 @@ Implement graphic drawing capabalities?
   Not sure how this would work, but would be cool
 Implement string features
   Add, concat, slice, index, etc.
+
+Fix bug where tmp commands are deleted on exit when part of a custom command

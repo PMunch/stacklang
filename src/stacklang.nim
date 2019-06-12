@@ -16,6 +16,7 @@ type
     customCommands*: Table[string, seq[string]]
     tmpCommands*: Table[string, seq[string]]
     variables*: Table[string, Element]
+    randoms*: seq[string]
     messages: string
 
 proc `$`*(element: Element): string =
@@ -139,35 +140,63 @@ defineCommands(Commands, docstrings, runCommand):
       calc.messages &= calc.stack[pos + 1 .. ^1].map(`$`).join " "
       calc.stack.setLen(pos)
     calc.messages &= "\n"
-  StackSwap = "swap"; "Swaps the two bottom elements on the calc.stack":
+  StackSwap = "swap"; "Swaps the two bottom elements on the stack":
     let
       a = calc.stack[^1]
       b = calc.stack[^2]
     calc.stack[^1] = b
     calc.stack[^2] = a
-  StackRotate = "rot"; "Rotates the calc.stack one level":
+  StackRotate = "rot"; "Rotates the stack one level":
     calc.stack.insert(calc.stack.pop, 0)
-  StackInsert = "insert"; "Takes an element and a number and inserts the element at that position in the calc.stack":
+  StackInsert = "insert"; "Takes an element and a number and inserts the element at that position in the stack":
     let
       el = calc.stack[^2]
-      pos = calc.stack[^1].floatVal.int
+      pos = calc.stack[^1]
     calc.stack.setLen(calc.stack.len - 2)
-    if pos >= 0:
-      calc.stack.insert(el, pos)
-    else:
-      calc.stack.insert(el, calc.stack.len + pos)
-  Delete = "del"; "Deletes the element of the calc.stack at a given position":
-    let pos = calc.stack.pop.floatVal.int
-    if pos >= 0:
-      calc.stack.delete(pos)
-    else:
-      calc.stack.delete(calc.stack.high + pos)
-  StackLen = "len"; "Puts the length of the calc.stack onto the calc.stack":
+    case pos.kind:
+    of Float:
+      if pos.floatVal.int >= 0:
+        calc.stack.insert(el, pos.floatVal.int)
+      else:
+        calc.stack.insert(el, calc.stack.len + pos.floatVal.int)
+    of String:
+      var cpos = calc.stack.high
+      while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
+        cpos -= 1
+      calc.stack.insert(el, cpos + 1)
+
+  Delete = "delete"; "Deletes the element of the stack at a given position":
+    let pos = calc.stack.pop
+    case pos.kind:
+    of Float:
+      if pos.floatVal.int >= 0:
+        calc.stack.delete(pos.floatVal.int)
+      else:
+        calc.stack.delete(calc.stack.high + pos.floatVal.int + 1)
+    of String:
+      var cpos = calc.stack.high
+      while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
+        cpos -= 1
+      calc.stack.delete(cpos + 1)
+  StackLen = "len"; "Puts the length of the stack onto the stack":
       calc.stack.push Element(kind: Float, floatVal: calc.stack.len.float)
-  Until = "until"; "Takes a label and a command and runs the command until the topmost element on the calc.stack is the label":
+  RandLabel = "rand"; "Creates a random label that's guaranteed to not collide":
+    var cmdname = "rand" & align($rand(9999), 4, '0')
+    while cmdname in calc.customCommands or cmdname in calc.tmpCommands or cmdname in calc.variables:
+      cmdname = "rand" & align($rand(9999), 4, '0')
+    calc.stack.push Element(kind: String, strVal: cmdname)
+    calc.randoms.push cmdname
+  RandLast = "lstrand"; "Pops the last random label off an internal stack and puts it on the actual stack":
+      calc.stack.push Element(kind: String, strVal: calc.randoms.pop)
+  Until = "until"; "Takes a label and a command and runs the command until the topmost element on the stack is the label":
     let
       lbl = calc.stack[^2]
       cmd = calc.stack[^1].strVal
+    var iterationsLeft = 100_000
+    let expandedCommand =
+      calc.customCommands.getOrDefault(cmd, calc.tmpCommands.getOrDefault(cmd))
+    if calc.tmpCommands.hasKey cmd:
+      calc.tmpCommands.del cmd
     calc.stack.setLen(calc.stack.len - 2)
     case lbl.kind:
     of Float:
@@ -176,17 +205,35 @@ defineCommands(Commands, docstrings, runCommand):
         while calc.stack.len != lbl.floatVal.int and not runLast:
           if calc.stack.len == lbl.floatVal.int + 1:
             runLast = true
-          calc.runCmd(cmd)
+          if expandedCommand.len > 0:
+            discard calc.execute(expandedCommand)
+          else:
+            calc.runCmd(cmd)
+          iterationsLeft -= 1
+          if iterationsLeft == 0:
+            raise newException(ValueError, "Iteration ran more than 100 000 times, aborting")
       else:
         let prelen = calc.stack.len
         var runLast = false
         while calc.stack.len != prelen + lbl.floatVal.int and not runLast:
           if calc.stack.len == lbl.floatVal.int + 1:
             runLast = true
-          calc.runCmd(cmd)
+          if expandedCommand.len > 0:
+            discard calc.execute(expandedCommand)
+          else:
+            calc.runCmd(cmd)
+          iterationsLeft -= 1
+          if iterationsLeft == 0:
+            raise newException(ValueError, "Iteration ran more than 100 000 times, aborting")
     of String:
       while calc.stack[^1].kind != String or calc.stack[^1].strVal != lbl.strVal:
-        calc.runCmd(cmd)
+        if expandedCommand.len > 0:
+          discard calc.execute(expandedCommand)
+        else:
+          calc.runCmd(cmd)
+        iterationsLeft -= 1
+        if iterationsLeft == 0:
+          raise newException(ValueError, "Iteration ran more than 100 000 times, aborting")
   Store = "store"; "Takes an element and a label and stores the element as a variable that can later be retrieved by load":
     if calc.stack[^1].kind != String:
       raise newException(ValueError, "Last element on stack must be a label")
@@ -237,13 +284,7 @@ defineCommands(Commands, docstrings, runCommand):
       cmd =  if calc.customCommands.hasKey cmdName: calc.customCommands[cmdName]
         else: calc.tmpCommands[cmdName]
     for command in cmd:
-      try:
-        calc.stack.push Element(kind: Float, floatVal: parseFloat(command))
-      except:
-        if command[0] == '\\':
-          calc.stack.push Element(kind: String, strVal: command[1..^1])
-        else:
-          calc.stack.push Element(kind: String, strVal: command)
+      calc.pushValue(command)
   DeleteCommand = "delcmd"; "Deletes the command given by the last label":
     let cmdName = calc.stack.pop.strVal
     if calc.customCommands.hasKey cmdName:
@@ -298,7 +339,7 @@ defineCommands(Commands, docstrings, runCommand):
     quit 0
 
 defineCommands(InternalCommands, docstringsInternal, runInternalCommand):
-  Goto = "goto"; "Goes to the first instance of a label within a command":
+  GotoBackward = "goback"; "Goes to the first instance of a label within a command":
     try:
       let destination = calc.stack.pop
       case destination.kind:
@@ -311,6 +352,28 @@ defineCommands(InternalCommands, docstringsInternal, runInternalCommand):
         let pos = destination.floatVal.int
         if pos >= 0:
           i = pos
+        else:
+          i += pos - 1
+      calc.runCmdCmd(cc, i, labelGotos)
+    except:
+      echo getCurrentExceptionMsg()
+      raise
+  GotoForward = "gofwd"; "Goes to the last instance of a label within a command":
+    try:
+      let destination = calc.stack.pop
+      case destination.kind:
+      of String:
+        let label = destination.strVal
+        labelGotos.inc(label)
+        debug("increased label ", label, " to ", labelGotos[label])
+        for x in countdown(cc.high, cc.low):
+          if cc[x] == label:
+            i = x + 1
+            break
+      of Float:
+        let pos = destination.floatVal.int
+        if pos >= 0:
+          i = cc.high - pos
         else:
           i -= pos
       calc.runCmdCmd(cc, i, labelGotos)
@@ -330,7 +393,7 @@ defineCommands(InternalCommands, docstringsInternal, runInternalCommand):
     calc.stack.compare(`<=`)
   MoreOrEqual = ">="; "Compares two elements and if a>=b it runs the next command, otherwise the second next command":
     calc.stack.compare(`>=`)
-  LabelCount = "lblcnt"; "Takes a label and puts the amount of times that label has been the target of goto in this run of the command":
+  LabelCount = "lblcnt"; "Takes a label and puts the amount of times that label has been the target of goback or gofwd in this run of the command":
     debug "dbg(lblcnt): ", labelGotos.getOrDefault(calc.stack[^1].strVal, 0)
     debug "dbg(lblcnt): ", calc.stack
     calc.stack.push Element(kind: Float, floatVal: labelGotos.getOrDefault(calc.stack.pop().strVal, 0).float)
@@ -369,6 +432,24 @@ proc runCmdCmd(calc: Calc, cc: seq[string], i: var int, labelGotos: var CountTab
     #else:
     #  raise newException(ValueError, $i & " not in " & $cc)
 
+proc cleanTmp(calc: Calc, cmd: string): bool =
+  var hasTmp = false
+  for e in calc.stack:
+    if e.kind == String and e.strVal == cmd:
+      hasTmp = true
+      break
+  for c in calc.customCommands.values:
+    if cmd in c:
+      hasTmp = true
+      break
+  for c in calc.tmpCommands.values:
+    if cmd in c:
+      hasTmp = true
+      break
+  if not hasTmp:
+    calc.tmpCommands.del cmd
+    return true
+
 proc execute*(calc: Calc, commands: seq[string]): string =
   var
     labelGotos = initCountTable[string]()
@@ -379,8 +460,30 @@ proc execute*(calc: Calc, commands: seq[string]): string =
     calc.runCmdCmd(commands, i, labelGotos)
     debug "stack after run ", calc.stack
     i += 1
+    var deleted = true
+    while deleted:
+      deleted = false
+      for cmd in calc.tmpCommands.keys:
+        deleted = calc.cleanTmp(cmd)
   result = calc.messages
   calc.messages = ""
+
+proc pushValue(calc: Calc, value: string) =
+  case value:
+  of "pi":
+    calc.stack.push Element(kind: Float, floatVal: Pi)
+  of "tau":
+    calc.stack.push Element(kind: Float, floatVal: Tau)
+  of "e":
+    calc.stack.push Element(kind: Float, floatVal: E)
+  else:
+    try:
+      calc.stack.push Element(kind: Float, floatVal: parseFloat(value))
+    except:
+      if value[0] == '\\':
+        calc.stack.push Element(kind: String, strVal: value[1..^1])
+      else:
+        calc.stack.push Element(kind: String, strVal: value)
 
 proc runCmd(calc: Calc, command: string, verbose = false) =
   var verbose = verbose
@@ -388,14 +491,10 @@ proc runCmd(calc: Calc, command: string, verbose = false) =
     if calc.customCommands.hasKey(command):
       calc.messages &= calc.execute calc.customCommands[command]
     elif calc.tmpCommands.hasKey(command):
-      calc.messages &= calc.execute calc.tmpCommands[command]
+      let cmd = calc.tmpCommands[command]
+      discard calc.cleanTmp command
+      calc.messages &= calc.execute cmd
     else:
-      try:
-        calc.stack.push Element(kind: Float, floatVal: parseFloat(command))
-      except:
-        if command[0] == '\\':
-          calc.stack.push Element(kind: String, strVal: command[1..^1])
-        else:
-          calc.stack.push Element(kind: String, strVal: command)
+      calc.pushValue(command)
   if verbose:
     calc.messages &= $calc.stack & " <- " & command & "\n"
