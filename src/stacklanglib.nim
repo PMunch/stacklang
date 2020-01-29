@@ -21,7 +21,7 @@ type
 
 proc `$`*(element: Element): string =
   case element.kind:
-  of Float: $element.floatVal
+  of Float: $element.floatVal.formatFloat(ffDefault, -1)
   of String: $element.strVal
 
 #template humanEcho*(args: varargs[string, `$`]) =
@@ -68,6 +68,13 @@ template simpleExecute[T](stack: var seq[T], operation: untyped): untyped {.dirt
 
 # Then define all our commands using our macro
 defineCommands(Commands, docstrings, runCommand):
+  Ampersand = "&"; "Combines two items into one":
+    let nlbl = $calc.stack[^2] & $calc.stack[^1]
+    calc.stack.setLen(calc.stack.len - 2)
+    try:
+      calc.stack.push Element(kind: Float, floatVal: parseFloat(nlbl))
+    except:
+      calc.stack.push Element(kind: String, strVal: nlbl)
   Plus = "+"; "Adds two numbers":
     calc.stack.execute(a + b)
   Minus = "-"; "Subtract two numbers":
@@ -198,6 +205,10 @@ defineCommands(Commands, docstrings, runCommand):
     if calc.tmpCommands.hasKey cmd:
       calc.tmpCommands.del cmd
     calc.stack.setLen(calc.stack.len - 2)
+    if expandedCommand.len > 0:
+      debug "Running custom command \"" & expandedCommand.join(" ") & "\" until hitting label " & lbl.strVal
+    else:
+      debug "Running built-in command \"" & cmd & "\" until hitting label " & lbl.strVal
     case lbl.kind:
     of Float:
       if lbl.floatVal.int >= 0:
@@ -292,7 +303,8 @@ defineCommands(Commands, docstrings, runCommand):
     elif calc.tmpCommands.hasKey cmdName:
       calc.tmpCommands.del cmdName
     else:
-      raise newException(ValueError, "No custom command with name " & cmdName & " found")
+      debug "No custom command with name ", cmdName, " found"
+    #  raise newException(ValueError, "No custom command with name " & cmdName & " found")
   ListCommands = "lscmd"; "Lists all the custom commands":
     if calc.customCommands.len > 0:
       calc.messages &= "These are the currently defined custom commands:\n"
