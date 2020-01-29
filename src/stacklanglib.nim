@@ -1,5 +1,4 @@
-import math, strutils, tables, os, terminal, random, sequtils
-import rdstdin
+import math, strutils, tables, os, random, sequtils
 import operations
 
 type
@@ -206,9 +205,9 @@ defineCommands(Commands, docstrings, runCommand):
       calc.tmpCommands.del cmd
     calc.stack.setLen(calc.stack.len - 2)
     if expandedCommand.len > 0:
-      debug "Running custom command \"" & expandedCommand.join(" ") & "\" until hitting label " & lbl.strVal
+      debug "Running custom command \"", expandedCommand.join(" "), "\" until hitting label ", lbl
     else:
-      debug "Running built-in command \"" & cmd & "\" until hitting label " & lbl.strVal
+      debug "Running built-in command \"", cmd, "\" until hitting label ", lbl
     case lbl.kind:
     of Float:
       if lbl.floatVal.int >= 0:
