@@ -43,17 +43,23 @@ if paramCount() == 0:
         quit 2
     humanEcho $calc.stack & " <- " & $commands
 else:
+  var output = ""
   if paramCount() == 1 and paramStr(1) == "--help":
     echo "Welcome to stacklang!"
     echo "When running stacklang from the terminal either supply each argument"
     echo "and escape them in your shell, or wrap them in a single quote"
-    echo "statement. The calculations will be done, but by default nothing will"
-    echo "be output. Please use `display` or `print` to create output from your"
-    echo "calculation. The commands in stacklang.custom are loaded when running"
-    echo "in a shell but no new commands are added to it unless you run `exit`."
+    echo "statement. The calculations will be done, and of nothing is"
+    echo "explicitly output the entire stack will be printed. Please use"
+    echo "`display` or `print` to create output from your calculation. The"
+    echo "commands in stacklang.custom are loaded when running in a shell but"
+    echo "no new commands are added to it unless you run `exit`."
     echo ""
-    stdout.write calc.execute(@["help"])
+    output = calc.execute @["help"]
   elif paramCount() == 1:
-    stdout.write calc.execute paramStr(1).splitWhitespace()
+    output = calc.execute paramStr(1).splitWhitespace()
   else:
-    stdout.write calc.execute commandLineParams()
+    output = calc.execute commandLineParams()
+  if output.len == 0:
+    stdout.write calc.execute @["0", "print"]
+  elif output != "\n":
+    stdout.write output
