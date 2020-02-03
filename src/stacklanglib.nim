@@ -9,12 +9,12 @@ type
       strVal: string
     of Float:
       floatVal: float
-  Stack[T] = seq[T]
+  Stack*[T] = seq[T]
   Calc* = ref object
     stack*: Stack[Element]
     customCommands*: Table[string, seq[string]]
     tmpCommands*: Table[string, seq[string]]
-    variables*: Table[string, Element]
+    variables*: Table[string, Stack[Element]]
     randoms*: seq[string]
     messages: string
 
@@ -35,7 +35,7 @@ template debug(args: varargs[string, `$`]) =
     else:
       echo output
 
-template push[T](stack: var Stack[T], value: T) =
+template push*[T](stack: var Stack[T], value: T) =
   stack.add value
 
 proc `$`*[T](stack: Stack[T]): string =
@@ -244,18 +244,37 @@ defineCommands(Commands, docstrings, runCommand):
         iterationsLeft -= 1
         if iterationsLeft == 0:
           raise newException(ValueError, "Iteration ran more than 100 000 times, aborting")
-  Store = "store"; "Takes an element and a label and stores the element as a variable that can later be retrieved by load":
+  VariablePush = "varpush"; "Takes an element and a label and pushes the element to the stack named by the label":
     if calc.stack[^1].kind != String:
       raise newException(ValueError, "Last element on stack must be a label")
     else:
-      calc.variables[calc.stack[^1].strVal] = calc.stack[^2]
+      if calc.variables.hasKey(calc.stack[^1].strVal):
+        calc.variables[calc.stack[^1].strVal].add calc.stack[^2]
+      else:
+        calc.variables[calc.stack[^1].strVal] = @[calc.stack[^2]]
       calc.stack.setLen(calc.stack.len - 2)
-  Load = "load"; "Takes a label and loads the variable by that name back onto the stack, removing the variable":
+  VariablePop = "varpop"; "Takes a label and pops an element of the stack named by that label":
     if calc.stack[^1].kind != String:
       raise newException(ValueError, "Last element on stack must be a label")
     else:
-      if not calc.variables.take(calc.stack[^1].strVal, calc.stack[^1]):
+      let label = calc.stack[^1].strVal
+      if not calc.variables.hasKey(label):
         raise newException(ValueError, "No variable named " & $calc.stack[^1])
+      else:
+        calc.stack[^1] = calc.variables[label].pop
+        if calc.variables[label].len == 0:
+          calc.variables.del label
+  VariableSwap = "varswp"; "Takes a label and swaps the current stack for that of the one named by that label":
+    if calc.stack[^1].kind != String:
+      raise newException(ValueError, "Last element on stack must be a label")
+    else:
+      let label = calc.stack.pop.strVal
+      if not calc.variables.hasKey(label):
+        raise newException(ValueError, "No variable named " & $calc.stack[^1])
+      else:
+        let oldStack = calc.stack
+        calc.stack = calc.variables[label]
+        calc.variables[label] = oldStack
   ListVariables = "list"; "Lists all currently stored variables":
     for key, value in calc.variables:
       echo key, "\t", value

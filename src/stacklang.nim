@@ -1,7 +1,7 @@
 import stacklanglib, tables, os, strutils, terminal
 import rdstdin
 
-var calc = Calc(stack: @[], customCommands: initTable[string, seq[string]](), tmpCommands: initTable[string, seq[string]](), variables: initTable[string, Element]())
+var calc = Calc(stack: @[], customCommands: initTable[string, seq[string]](), tmpCommands: initTable[string, seq[string]](), variables: initTable[string, Stack[Element]]())
 if fileExists(getAppDir() / "stacklang.custom"):
   for line in (getAppDir() / "stacklang.custom").lines:
     let words = line.splitWhitespace()
@@ -35,12 +35,12 @@ if paramCount() == 0:
       calc.stack = oldstack
       if not isatty(stdin):
         quit 1
-    except:
-      writeStackTrace()
-      echo getCurrentExceptionMsg()
-      calc.stack = oldstack
-      if not isatty(stdin):
-        quit 2
+    #except:
+    #  writeStackTrace()
+    #  echo getCurrentExceptionMsg()
+    #  calc.stack = oldstack
+    #  if not isatty(stdin):
+    #    quit 2
     humanEcho $calc.stack & " <- " & $commands
 else:
   var output = ""
