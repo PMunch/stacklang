@@ -1,5 +1,9 @@
 import macros
 
+type
+  StackError* = object of IndexError
+    currentCommand*: string
+
 macro defineCommands*(enumName, docarrayName, runnerName,
   definitions: untyped): untyped =
   var
@@ -46,6 +50,12 @@ macro defineCommands*(enumName, docarrayName, runnerName,
         except:
           parseFail
           break runnerBody
-        `caseSwitch`
+        try:
+          `caseSwitch`
+        except IndexError as e:
+          var se = newException(StackError, "IndexError while running command", e)
+          se.currentCommand = `templateArgument`
+          raise se
   when defined(echoOperations):
+
     echo result.repr

@@ -30,17 +30,20 @@ if paramCount() == 0:
     let oldstack = calc.stack
     try:
       stdout.write calc.execute(commands)
-    except IndexError:
-      echo "Ran out of elements on stack!"
+    except StackError as e:
+      echo "Ran out of elements on stack while running \"", e.currentCommand, "\"!"
+      #echo e.msg
+      #echo e.getStackTrace()
       calc.stack = oldstack
       if not isatty(stdin):
         quit 1
-    #except:
-    #  writeStackTrace()
-    #  echo getCurrentExceptionMsg()
-    #  calc.stack = oldstack
-    #  if not isatty(stdin):
-    #    quit 2
+      #raise getCurrentException()
+    except:
+      writeStackTrace()
+      echo getCurrentExceptionMsg()
+      calc.stack = oldstack
+      if not isatty(stdin):
+        quit 2
     humanEcho $calc.stack & " <- " & $commands
 else:
   var output = ""
