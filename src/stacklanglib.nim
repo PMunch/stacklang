@@ -1,5 +1,6 @@
 import math, strutils, tables, os, random, sequtils
 import operations
+export operations.StackError
 
 type
   ElementKind = enum String, Float
@@ -170,7 +171,6 @@ defineCommands(Commands, docstrings, runCommand):
       while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
         cpos -= 1
       calc.stack.insert(el, cpos + 1)
-
   Delete = "delete"; "Deletes the element of the stack at a given position":
     let pos = calc.stack.pop
     case pos.kind:
@@ -259,22 +259,43 @@ defineCommands(Commands, docstrings, runCommand):
     else:
       let label = calc.stack[^1].strVal
       if not calc.variables.hasKey(label):
-        raise newException(ValueError, "No variable named " & $calc.stack[^1])
+        raise newException(ValueError, "No variable named " & label)
       else:
         calc.stack[^1] = calc.variables[label].pop
         if calc.variables[label].len == 0:
           calc.variables.del label
-  VariableSwap = "varswp"; "Takes a label and swaps the current stack for that of the one named by that label":
+  VariableMerge = "varmrg"; "Takes a label and puts all elements of that variable onto the current stack, deleting the variable":
     if calc.stack[^1].kind != String:
       raise newException(ValueError, "Last element on stack must be a label")
     else:
       let label = calc.stack.pop.strVal
       if not calc.variables.hasKey(label):
-        raise newException(ValueError, "No variable named " & $calc.stack[^1])
+        raise newException(ValueError, "No variable named " & label)
       else:
-        let oldStack = calc.stack
+        calc.stack = calc.stack.concat calc.variables[label]
+        calc.variables.del label
+  VariableSwap = "varswp"; "Takes a label and swaps the current stack for that of the one named by that label":
+    if calc.stack[^1].kind != String:
+      raise newException(ValueError, "Last element on stack must be a label")
+    else:
+      let
+        label = calc.stack.pop.strVal
+        oldStack = calc.stack
+      if calc.variables.hasKey(label):
         calc.stack = calc.variables[label]
+      else:
+        calc.stack = @[]
+      if oldStack.len != 0:
         calc.variables[label] = oldStack
+      else:
+        if calc.variables.hasKey(label):
+          calc.variables.del label
+  VariableDelete = "vardel"; "Takes a label and deletes the variable by that name":
+    if calc.stack[^1].kind != String:
+      raise newException(ValueError, "Last element on stack must be a label")
+    else:
+      let label = calc.stack.pop.strVal
+      calc.variables.del label
   ListVariables = "list"; "Lists all currently stored variables":
     for key, value in calc.variables:
       echo key, "\t", value
@@ -327,11 +348,11 @@ defineCommands(Commands, docstrings, runCommand):
     if calc.customCommands.len > 0:
       calc.messages &= "These are the currently defined custom commands:\n"
       for name, command in calc.customCommands.pairs:
-        calc.messages &= "\t" & name & "\t" & command.join(" ") & "\n"
+        calc.messages &= "\t" & name & " ->\t" & command.join(" ") & "\n"
     if calc.tmpCommands.len > 0:
       calc.messages &= "These are the temporary commands:\n"
       for name, command in calc.tmpCommands.pairs:
-        calc.messages &= "\t" & name & "\t" & command.join(" ") & "\n"
+        calc.messages &= "\t" & name & " ->\t" & command.join(" ") & "\n"
 #      humanEcho calc.stack
 #    verbose = false
   Call = "call"; "Takes a label and runs it as a command":
@@ -464,18 +485,29 @@ proc runCmdCmd(calc: Calc, cc: seq[string], i: var int, labelGotos: var CountTab
 
 proc cleanTmp(calc: Calc, cmd: string): bool =
   var hasTmp = false
-  for e in calc.stack:
-    if e.kind == String and e.strVal == cmd:
-      hasTmp = true
-      break
-  for c in calc.customCommands.values:
-    if cmd in c:
-      hasTmp = true
-      break
-  for c in calc.tmpCommands.values:
-    if cmd in c:
-      hasTmp = true
-      break
+  debug "trying to clean temporary command " & cmd
+  block findTmp:
+    for e in calc.stack:
+      if e.kind == String and e.strVal == cmd:
+        debug "\tfound on stack, not removing"
+        hasTmp = true
+        break findTmp
+    for c in calc.customCommands.values:
+      if cmd in c:
+        debug "\tfound in custom command, not removing"
+        hasTmp = true
+        break findTmp
+    for k in calc.tmpCommands.keys:
+      if cmd != k and cmd in calc.tmpCommands[k]:
+        debug "\tfound in other temporary command \"" & k & "\", not removing"
+        hasTmp = true
+        break findTmp
+    for k in calc.variables.keys:
+      for e in calc.variables[k]:
+        if e.kind == String and e.strVal == cmd:
+          debug "\tfound in variable stack \"" & k & "\", not removing"
+          hasTmp = true
+          break findTmp
   if not hasTmp:
     calc.tmpCommands.del cmd
     return true
@@ -490,11 +522,8 @@ proc execute*(calc: Calc, commands: seq[string]): string =
     calc.runCmdCmd(commands, i, labelGotos)
     debug "stack after run ", calc.stack
     i += 1
-    var deleted = true
-    while deleted:
-      deleted = false
-      for cmd in calc.tmpCommands.keys:
-        deleted = calc.cleanTmp(cmd)
+    for cmd in calc.tmpCommands.keys:
+      discard calc.cleanTmp(cmd)
   result = calc.messages
   calc.messages = ""
 
@@ -522,8 +551,8 @@ proc runCmd(calc: Calc, command: string, verbose = false) =
       calc.messages &= calc.execute calc.customCommands[command]
     elif calc.tmpCommands.hasKey(command):
       let cmd = calc.tmpCommands[command]
-      discard calc.cleanTmp command
       calc.messages &= calc.execute cmd
+      discard calc.cleanTmp command
     else:
       calc.pushValue(command)
   if verbose:
