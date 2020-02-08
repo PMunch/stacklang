@@ -1,15 +1,24 @@
 import math, strutils, tables, os, random, sequtils
 import operations
 export operations.StackError
+import termstyle
 
 type
-  ElementKind = enum String, Float
+  ElementKind* = enum String, Float
   Element* = object
-    case kind: ElementKind
+    case kind*: ElementKind
     of String:
-      strVal: string
+      strVal*: string
     of Float:
-      floatVal: float
+      floatVal*: float
+  MessageComponents* = enum Text, Tab, Elem
+  Message* = object
+    case kind*: MessageComponents
+    of Text:
+      strVal*: string
+    of Elem:
+      elem*: Element
+    else: discard
   Stack*[T] = seq[T]
   Calc* = ref object
     stack*: Stack[Element]
@@ -17,7 +26,22 @@ type
     tmpCommands*: Table[string, seq[string]]
     variables*: Table[string, Stack[Element]]
     randoms*: seq[string]
-    messages: string
+    messages: seq[seq[Message]]
+
+template `&=`(messages: var seq[seq[Message]], message: seq[Message]) =
+  messages.add message
+
+template `!`(x: string or Element): untyped =
+  when x is Element:
+    Message(kind: Elem, elem: x)
+  else:
+    if x == "\t":
+      Message(kind: Tab)
+    else:
+      Message(kind: Text, strVal: x)
+
+proc `&=`(messages: var seq[seq[Message]], message: string) =
+  messages.add(message.split(Newlines).mapIt(Message(kind: Text, strVal: it)))
 
 proc `$`*(element: Element): string =
   case element.kind:
@@ -32,9 +56,9 @@ template debug(args: varargs[string, `$`]) =
   when defined(verbosedebug):
     let output = join args
     if output[0..2] != "dbg":
-      echo "dbg: ", output
+      echo gray "dbg: ", output
     else:
-      echo output
+      echo gray output
 
 template push*[T](stack: var Stack[T], value: T) =
   stack.add value
@@ -66,15 +90,18 @@ template simpleExecute[T](stack: var seq[T], operation: untyped): untyped {.dirt
     let a = stack.pop.floatVal
     stack.push(Element(kind: Float, floatVal: float(operation)))
 
+template toElem(x: string): Element =
+  try:
+    Element(kind: Float, floatVal: parseFloat(x))
+  except:
+    Element(kind: String, strVal: x)
+
 # Then define all our commands using our macro
 defineCommands(Commands, docstrings, runCommand):
   Ampersand = "&"; "Combines two items into one":
     let nlbl = $calc.stack[^2] & $calc.stack[^1]
     calc.stack.setLen(calc.stack.len - 2)
-    try:
-      calc.stack.push Element(kind: Float, floatVal: parseFloat(nlbl))
-    except:
-      calc.stack.push Element(kind: String, strVal: nlbl)
+    calc.stack.push toElem(nlbl)
   Plus = "+"; "Adds two numbers":
     calc.stack.execute(a + b)
   Minus = "-"; "Subtract two numbers":
@@ -146,7 +173,6 @@ defineCommands(Commands, docstrings, runCommand):
         pos -= 1
       calc.messages &= calc.stack[pos + 1 .. ^1].map(`$`).join " "
       calc.stack.setLen(pos)
-    calc.messages &= "\n"
   StackSwap = "swap"; "Swaps the two bottom elements on the stack":
     let
       a = calc.stack[^1]
@@ -298,7 +324,7 @@ defineCommands(Commands, docstrings, runCommand):
       calc.variables.del label
   ListVariables = "list"; "Lists all currently stored variables":
     for key, value in calc.variables:
-      echo key, "\t", value
+      calc.messages &= @[!toElem(key), !"\t"].concat(value.mapIt(!it))
   Dup = "dup"; "Duplicates the last element on the stack":
     calc.stack.push calc.stack[^1]
   Nop = "nop"; "Does nothing":
@@ -348,11 +374,11 @@ defineCommands(Commands, docstrings, runCommand):
     if calc.customCommands.len > 0:
       calc.messages &= "These are the currently defined custom commands:\n"
       for name, command in calc.customCommands.pairs:
-        calc.messages &= "\t" & name & " ->\t" & command.join(" ") & "\n"
+        calc.messages &= @[!"\t", !toElem(name), !"->", !"\t"].concat(command.mapIt(!toElem(it)))
     if calc.tmpCommands.len > 0:
       calc.messages &= "These are the temporary commands:\n"
       for name, command in calc.tmpCommands.pairs:
-        calc.messages &= "\t" & name & " ->\t" & command.join(" ") & "\n"
+        calc.messages &= @[!"\t", !toElem(name), !"->", !"\t"].concat(command.mapIt(!toElem(it)))
 #      humanEcho calc.stack
 #    verbose = false
   Call = "call"; "Takes a label and runs it as a command":
@@ -378,10 +404,10 @@ defineCommands(Commands, docstrings, runCommand):
   Help = "help"; "Lists all the commands with documentation":
     calc.messages &= "Commands:\n"
     for command in Commands:
-      calc.messages &= "\t" & $command & "\t" & docstrings[command] & "\n"
+      calc.messages &= @[!"\t", !toElem($command), !"\t", !docstrings[command]]
     calc.messages &= "When running a series of commands you can also use these:\n"
     for command in InternalCommands:
-      calc.messages &= "\t" & $command & "\t" & docstringsInternal[command] & "\n"
+      calc.messages &= @[!"\t", !toElem($command), !"\t", !docstringsInternal[command]]
   Exit = "exit"; "Exits the program, saving custom commands":
     var output = open(getAppDir() / "stacklang.custom", fmWrite)
     for name, command in calc.customCommands.pairs:
@@ -512,7 +538,7 @@ proc cleanTmp(calc: Calc, cmd: string): bool =
     calc.tmpCommands.del cmd
     return true
 
-proc execute*(calc: Calc, commands: seq[string]): string =
+proc execute*(calc: Calc, commands: seq[string]): seq[seq[Message]] =
   var
     labelGotos = initCountTable[string]()
     i = commands.low
@@ -525,7 +551,7 @@ proc execute*(calc: Calc, commands: seq[string]): string =
     for cmd in calc.tmpCommands.keys:
       discard calc.cleanTmp(cmd)
   result = calc.messages
-  calc.messages = ""
+  calc.messages = @[]
 
 proc pushValue(calc: Calc, value: string) =
   case value:

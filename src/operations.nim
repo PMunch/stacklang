@@ -9,12 +9,18 @@ macro defineCommands*(enumName, docarrayName, runnerName,
   var
     enumDef = nnkTypeSection.newTree(
       nnkTypeDef.newTree(
-        enumName,
+        nnkPostfix.newTree(
+          newIdentNode "*",
+          enumName
+        ),
         newEmptyNode(),
         nnkEnumTy.newTree(newEmptyNode())))
     docstrings =  nnkConstSection.newTree(
       nnkConstDef.newTree(
-        docarrayName,
+        nnkPostfix.newTree(
+          newIdentNode "*",
+          docarrayName
+        ),
         nnkBracketExpr.newTree(
           newIdentNode("array"),
           enumName,
