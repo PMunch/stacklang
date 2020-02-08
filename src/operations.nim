@@ -1,10 +1,11 @@
-import macros
+import macros, sequtils, strutils
 
 type
   StackError* = object of IndexError
     currentCommand*: string
+  Type* = enum Number, Label, Any
 
-macro defineCommands*(enumName, docarrayName, runnerName,
+macro defineCommands*(enumName, docarrayName, signaturesName, runnerName,
   definitions: untyped): untyped =
   var
     enumDef = nnkTypeSection.newTree(
@@ -27,6 +28,21 @@ macro defineCommands*(enumName, docarrayName, runnerName,
           newIdentNode("string")
         ),
         nnkBracket.newTree()))
+    signatures =  nnkConstSection.newTree(
+      nnkConstDef.newTree(
+        nnkPostfix.newTree(
+          newIdentNode "*",
+          signaturesName
+        ),
+        nnkBracketExpr.newTree(
+          newIdentNode("array"),
+          enumName,
+          nnkBracketExpr.newTree(
+            newIdentNode("seq"),
+            newIdentNode("Type")
+          )
+        ),
+        nnkBracket.newTree()))
     templateArgument = newIdentNode("command")
     parseStmt = nnkCall.newTree(
       nnkBracketExpr.newTree(
@@ -40,7 +56,26 @@ macro defineCommands*(enumName, docarrayName, runnerName,
     let
       enumInfo = definitions[i]
       commandInfo = definitions[i+1]
-    enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1])
+    signatures[0][2].add nnkCall.newTree(
+      nnkBracketExpr.newTree(
+        newIdentNode("seq"),
+        newIdentNode("Type")
+      ),
+      nnkPrefix.newTree(
+        newIdentNode("@"),
+        nnkBracket.newTree()
+      )
+    )
+    if enumInfo[1].kind == nnkStrLit:
+      enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1])
+    else:
+      enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1][^1])
+      for kind in enumInfo[1][0..^2]:
+        case kind.strVal:
+        of "a": signatures[0][2][0][1][1].add newIdentNode("Any")
+        of "l": signatures[0][2][0][1][1].add newIdentNode("Label")
+        of "n": signatures[0][2][0][1][1].add newIdentNode("Number")
+        else: discard
     docstrings[0][2].add commandInfo[0]
     caseSwitch.add nnkOfBranch.newTree(
       enumInfo[0],
@@ -48,6 +83,7 @@ macro defineCommands*(enumName, docarrayName, runnerName,
   result = quote do:
     `enumDef`
     `docstrings`
+    `signatures`
     template `runnerName`(`templateArgument`: untyped, parseFail: untyped): untyped =
       block runnerBody:
         var `parsedEnum`: `enumName`

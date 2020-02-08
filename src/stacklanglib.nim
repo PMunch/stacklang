@@ -97,8 +97,8 @@ template toElem(x: string): Element =
     Element(kind: String, strVal: x)
 
 # Then define all our commands using our macro
-defineCommands(Commands, docstrings, runCommand):
-  Ampersand = "&"; "Combines two items into one":
+defineCommands(Commands, docstrings, signatures, runCommand):
+  Ampersand = (a, a, "&"); "Combines two items into one":
     let nlbl = $calc.stack[^2] & $calc.stack[^1]
     calc.stack.setLen(calc.stack.len - 2)
     calc.stack.push toElem(nlbl)
@@ -404,10 +404,16 @@ defineCommands(Commands, docstrings, runCommand):
   Help = "help"; "Lists all the commands with documentation":
     calc.messages &= "Commands:\n"
     for command in Commands:
-      calc.messages &= @[!"\t", !toElem($command), !"\t", !docstrings[command]]
+      if signatures[command].len == 0:
+        calc.messages &= @[!"\t", !toElem($command), !"\t", !docstrings[command]]
+      else:
+        calc.messages &= @[!"\t", !toElem($command), !("[" & signatures[command].join(" ") & "]"), !"\t", !docstrings[command]]
     calc.messages &= "When running a series of commands you can also use these:\n"
     for command in InternalCommands:
-      calc.messages &= @[!"\t", !toElem($command), !"\t", !docstringsInternal[command]]
+      if signaturesInternal[command].len == 0:
+        calc.messages &= @[!"\t", !toElem($command), !"\t", !docstringsInternal[command]]
+      else:
+        calc.messages &= @[!"\t", !toElem($command), !("[" & signaturesInternal[command].join(" ") & "]"), !"\t", !docstringsInternal[command]]
   Exit = "exit"; "Exits the program, saving custom commands":
     var output = open(getAppDir() / "stacklang.custom", fmWrite)
     for name, command in calc.customCommands.pairs:
@@ -415,7 +421,7 @@ defineCommands(Commands, docstrings, runCommand):
     output.close()
     quit 0
 
-defineCommands(InternalCommands, docstringsInternal, runInternalCommand):
+defineCommands(InternalCommands, docstringsInternal, signaturesInternal, runInternalCommand):
   GotoBackward = "goback"; "Goes to the first instance of a label within a command":
     try:
       let destination = calc.stack.pop
