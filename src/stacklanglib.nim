@@ -90,20 +90,26 @@ template simpleExecute[T](stack: var seq[T], operation: untyped): untyped {.dirt
     let a = stack.pop.floatVal
     stack.push(Element(kind: Float, floatVal: float(operation)))
 
+template toElem(x: float): Element =
+  Element(kind: Float, floatVal: x)
+
 template toElem(x: string): Element =
   try:
     Element(kind: Float, floatVal: parseFloat(x))
   except:
     Element(kind: String, strVal: x)
 
+template perform(calc: Calc, action: untyped): untyped =
+  calc.stack.push toElem(action)
+
 # Then define all our commands using our macro
 defineCommands(Commands, docstrings, signatures, runCommand):
   Ampersand = (a, a, "&"); "Combines two items into one":
-    let nlbl = $calc.stack[^2] & $calc.stack[^1]
-    calc.stack.setLen(calc.stack.len - 2)
+    let nlbl = $vars[0] & $vars[1]
     calc.stack.push toElem(nlbl)
-  Plus = "+"; "Adds two numbers":
-    calc.stack.execute(a + b)
+  Plus = (n, n, "+"); "Adds two numbers":
+    #calc.stack.execute(a + b)
+    calc.perform vars[0] + vars[1]
   Minus = "-"; "Subtract two numbers":
     calc.stack.execute(b - a)
   Multiply = "*"; "Multiplies two numbers":

@@ -100,7 +100,7 @@ if paramCount() == 0:
         quit 1
       #raise getCurrentException()
     except:
-      writeStackTrace()
+      #writeStackTrace()
       echo red getCurrentExceptionMsg()
       calc.stack = oldstack
       if not isatty(stdin):
