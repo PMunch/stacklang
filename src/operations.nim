@@ -72,18 +72,18 @@ macro defineCommands*(enumName, docarrayName, signaturesName, runnerName,
       enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1])
     else:
       enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1][^1])
-      for i, kind in enumInfo[1][0..^2]:
+      for j, kind in enumInfo[1][0..^2]:
         variables.insert(0, nnkBracketExpr.newTree(
           newDotExpr(newIdentNode("calc"), newIdentNode("stack")),
-          nnkPrefix.newTree(newIdentNode("^"), newLit(i + 1))
+          nnkPrefix.newTree(newIdentNode("^"), newLit(j + 1))
         ))
         # TODO: add case for Position (positive, negative, label)
         case kind.strVal:
         of "a":
-          signatures[0][2][0][1][1].add newIdentNode("Any")
+          signatures[0][2][i div 2][1][1].add newIdentNode("Any")
         of "l":
           # TODO: Clean up these blocks..
-          signatures[0][2][0][1][1].add newIdentNode("Label")
+          signatures[0][2][i div 2][1][1].add newIdentNode("Label")
           variables[0] = newStmtList(nnkIfStmt.newTree(
             nnkElifBranch.newTree(nnkInfix.newTree(newIdentNode("=="),
               newDotExpr(variables[0], newIdentNode("kind")),
@@ -93,11 +93,11 @@ macro defineCommands*(enumName, docarrayName, signaturesName, runnerName,
               newIdentNode("ValueError"),
               nnkInfix.newTree(newIdentNode("&"),
                 nnkInfix.newTree(newIdentNode("&"),
-                  newLit("Expected a string at position -" & $(i+1) & " but "),
+                  newLit("Expected a string at position -" & $(j+1) & " but "),
                   nnkPrefix.newTree(newIdentNode("$"), variables[0])),
                 newLit(" is not a string")))))))
         of "n":
-          signatures[0][2][0][1][1].add newIdentNode("Number")
+          signatures[0][2][i div 2][1][1].add newIdentNode("Number")
           variables[0] = newStmtList(nnkIfStmt.newTree(
             nnkElifBranch.newTree(nnkInfix.newTree(newIdentNode("=="),
               newDotExpr(variables[0], newIdentNode("kind")),
@@ -107,7 +107,7 @@ macro defineCommands*(enumName, docarrayName, signaturesName, runnerName,
               newIdentNode("ValueError"),
               nnkInfix.newTree(newIdentNode("&"),
                 nnkInfix.newTree(newIdentNode("&"),
-                  newLit("Expected a float at position -" & $(i+1) & " but "),
+                  newLit("Expected a float at position -" & $(j+1) & " but "),
                   nnkPrefix.newTree(newIdentNode("$"), variables[0])),
                 newLit(" is not a float")))))))
         else: discard
