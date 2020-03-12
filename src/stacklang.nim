@@ -43,12 +43,11 @@ proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
     if part.isSep == true:
       result &= toRunes(part.token)
     else:
-      result &= toRunes(
-        try:
-          $Element(kind: Float, floatVal: parseFloat(part.token))
-        except:
-          $Element(kind: String, strVal: part.token)
-      )
+      try:
+        discard parseFloat(part.token)
+        result &= toRunes(green part.token)
+      except:
+        result &= toRunes($Element(kind: String, strVal: part.token))
 
 proc `$`(x: seq[seq[Message]]): string =
   if x.len == 0:
