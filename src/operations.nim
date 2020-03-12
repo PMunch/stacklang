@@ -66,8 +66,7 @@ macro defineCommands*(enumName, docarrayName, signaturesName, runnerName,
         nnkBracket.newTree()
       )
     )
-    # TODO: Rewrite as a let block with variable names a, b, c, etc.
-    var variables = nnkPar.newTree()
+    var variables = nnkTupleConstr.newTree()
     if enumInfo[1].kind == nnkStrLit:
       enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1])
     else:
@@ -113,16 +112,27 @@ macro defineCommands*(enumName, docarrayName, signaturesName, runnerName,
         else: discard
     docstrings[0][2].add commandInfo[0]
     let varLen = newLit(variables.len)
-    caseSwitch.add nnkOfBranch.newTree(
-      enumInfo[0],
-      newStmtList(
-        if variables.len > 0: newLetStmt(newIdentNode("vars"), variables) else: nnkDiscardStmt.newTree(newLit(0)),
-        if variables.len > 0: (quote do:
-          calc.stack.setLen(calc.stack.len - `varLen`)
-        ) else: nnkDiscardStmt.newTree(newLit(0)),
+    let arguments = nnkVarTuple.newTree()
+    for i, _ in variables:
+      arguments.add newIdentNode($chr(ord('a') + i))
+    arguments.add newEmptyNode()
+    arguments.add variables
+    if variables.len > 0:
+      caseSwitch.add nnkOfBranch.newTree(
+        enumInfo[0],
+        newStmtList(
+          nnkLetSection.newTree(arguments),
+          (quote do:
+            calc.stack.setLen(calc.stack.len - `varLen`)
+          ),
+          commandInfo[1]
+        )
+      )
+    else:
+      caseSwitch.add nnkOfBranch.newTree(
+        enumInfo[0],
         commandInfo[1]
       )
-    )
   result = quote do:
     `enumDef`
     `docstrings`

@@ -105,21 +105,21 @@ template perform(calc: Calc, action: untyped): untyped =
 # Then define all our commands using our macro
 defineCommands(Commands, docstrings, signatures, runCommand):
   Ampersand = (a, a, "&"); "Combines two items into one":
-    let nlbl = $vars[0] & $vars[1]
+    let nlbl = $a & $b
     calc.stack.push toElem(nlbl)
   Plus = (n, n, "+"); "Adds two numbers":
     #calc.stack.execute(a + b)
-    calc.perform vars[0] + vars[1]
-  Minus = "-"; "Subtract two numbers":
-    calc.stack.execute(b - a)
-  Multiply = "*"; "Multiplies two numbers":
-    calc.stack.execute(a * b)
-  Divide = "/"; "Divides two numbers":
-    calc.stack.execute(b / a)
-  Sqrt = "sqrt"; "Takes the square root of a number":
-    calc.stack.simpleExecute(sqrt(a))
-  Power = "^"; "Takes one number and raises it to the power of another":
-    calc.stack.execute(b.pow(a))
+    calc.perform a + b
+  Minus = (n, n, "-"); "Subtract two numbers":
+    calc.perform a - b
+  Multiply = (n, n, "*"); "Multiplies two numbers":
+    calc.perform a * b
+  Divide = (n, n, "/"); "Divides two numbers":
+    calc.perform a / b
+  Sqrt = (n, "sqrt"); "Takes the square root of a number":
+    calc.perform sqrt(a)
+  Power = (n, n, "^"); "Takes one number and raises it to the power of another":
+    calc.perform a.pow(b)
   Sine = "sin"; "Takes the sine of a number":
     calc.stack.simpleExecute(sin(a))
   HyperSine = "sinh"; "Takes the hyperbolic sine of a number":
