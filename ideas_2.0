@@ -1,0 +1,23 @@
+- Negative stack/half applied functions
+  Lots of interesting side effects including functions that can take user input
+  When the stack runs out block the function until the stack has items again
+- Lookback syntax
+  Possibly shell like, copy elements from previous stacks
+  Possibly also command series?
+- Strings as a data-type
+  They are pretty handy, especially if we want to be able to ask the user for
+    input or document something
+  No operations on strings (or just a very limited amount)! Don't want to open
+    that can of worms
+- Documentating custom commands
+  `doc` command that adds a documentation string somewhere?
+- Types for custom commands?
+  Partially typed? Added with the `doc` command? Would allow "read all" kind of
+    commands that don't really have a type
+- Label scopes?
+  Stack names are currently global, makes it hard to recurse or chain commands
+  Possibly just an identifier for the current instance of a command that can be
+    added to any stack it creates
+- Better handling of precision?
+  Would be nice to not have `.0` behind everything..
+  Arbitrary precision floating point library?
