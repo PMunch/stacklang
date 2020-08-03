@@ -2,7 +2,7 @@ import termstyle, prompt, strutils
 
 var
   stack: seq[float]
-  blocked: seq[tuple[name: string, exec: iterator(): string]]
+  blocked: seq[tuple[name: string, exec: iterator(), elems: float]]
 
 type Operations = enum Add = "+", Subtract = "-", Multiply = "*", Divide = "/", Pop = "pop", Exit = "exit"
 
@@ -18,8 +18,9 @@ proc popImpl(stack: var seq[float]): float =
 template pop(stack: var seq[float], name: string): float =
   block:
     if stack.len == 0:
-      yield name
-    stack.popImpl()
+      yield
+    command.elems.add stack.popImpl()
+    command.elems[^1]
 
 while true:
   let input = p.readLine()
