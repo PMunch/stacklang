@@ -1,13 +1,16 @@
-import termstyle, prompt, strutils
+import prompt, strutils
+
+type
+  Operations = enum Add = "+", Subtract = "-", Multiply = "*", Divide = "/", TriDivide = "//", Pop = "pop", Exit = "exit"
+  Command = ref object
+    name: string
+    exec: iterator()
+    elems: seq[float]
 
 var
   stack: seq[float]
-  blocked: seq[tuple[name: string, exec: iterator(), elems: float]]
+  blocked: seq[Command]
 
-type Operations = enum Add = "+", Subtract = "-", Multiply = "*", Divide = "/", Pop = "pop", Exit = "exit"
-
-
-var input = ""
 var p = Prompt.init(promptIndicator = "> ")
 p.showPrompt()
 
@@ -25,54 +28,63 @@ template pop(stack: var seq[float], name: string): float =
 while true:
   let input = p.readLine()
   let commands = input.splitWhitespace()
-  for command in commands:
+  for cmd in commands:
     try:
-      let f = parseFloat(command)
+      let f = parseFloat(cmd)
       stack.add f
     except:
       try:
-        let c = parseEnum[Operations](command)
-        var i = case c:
-          of Add:
-            (iterator (): string {.closure.} =
-              let a = stack.pop("+")
-              let b = stack.pop("+(" & $a & ")")
-              stack.add a+b)
-          of Subtract:
-            (iterator (): string {.closure.} =
-              let a = stack.pop("-")
-              let b = stack.pop("-(" & $a & ")")
-              stack.add a-b)
-          of Multiply:
-            (iterator (): string {.closure.} =
-              let a = stack.pop("*")
-              let b = stack.pop("*(" & $a & ")")
-              stack.add a*b)
-          of Divide:
-            (iterator (): string {.closure.} =
-              let a = stack.pop("/")
-              let b = stack.pop("/(" & $a & ")")
-              stack.add a/b)
-          of Pop:
-            (iterator (): string {.closure.} =
-              discard stack.pop("pop"))
-          of Exit:
-            (iterator (): string {.closure.} =
-              echo ""
-              quit 0)
-        let name = i()
-        if not i.finished:
-          blocked.add (name: name, exec: i)
+        closureScope:
+          var command = new Command
+          command.name = cmd
+          let c = parseEnum[Operations](cmd)
+          command.exec = case c:
+            of Add:
+              (iterator () {.closure.} =
+                let a = stack.pop("+")
+                let b = stack.pop("+(" & $a & ")")
+                stack.add a+b)
+            of Subtract:
+              (iterator () {.closure.} =
+                let a = stack.pop("-")
+                let b = stack.pop("-(" & $a & ")")
+                stack.add a-b)
+            of Multiply:
+              (iterator () {.closure.} =
+                let a = stack.pop("*")
+                let b = stack.pop("*(" & $a & ")")
+                stack.add a*b)
+            of Divide:
+              (iterator () {.closure.} =
+                let a = stack.pop("/")
+                let b = stack.pop("/(" & $a & ")")
+                stack.add a/b)
+            of TriDivide:
+              (iterator () {.closure.} =
+                let a = stack.pop("")
+                let b = stack.pop("")
+                let c = stack.pop("")
+                stack.add a/b/c)
+            of Pop:
+              (iterator () {.closure.} =
+                discard stack.pop("pop"))
+            of Exit:
+              (iterator () {.closure.} =
+                echo ""
+                quit 0)
+          command.exec()
+          if not command.exec.finished:
+            blocked.add command
       except:
-        echo "\nInvalid command: ", command
+        echo "\nInvalid command: ", cmd
   while stack.len != 0 and blocked.len != 0:
-    let i = blocked[blocked.high]
+    var i = blocked[blocked.high]
     blocked.setLen(blocked.len-1)
-    let name = i.exec()
+    i.exec()
     if not i.exec.finished:
-      blocked.add (name: name, exec: i.exec)
+      blocked.add i
   stdout.write "\n"
   for i in blocked:
-    stdout.write i.name & " "
+    stdout.write i.name & "(" & i.elems.join(", ") & ")" & " "
   echo stack
 
