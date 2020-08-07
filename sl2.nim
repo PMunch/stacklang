@@ -14,15 +14,12 @@ var
 var p = Prompt.init(promptIndicator = "> ")
 p.showPrompt()
 
-proc popImpl(stack: var seq[float]): float =
-  result = stack[^1]
-  stack.setLen stack.len-1
-
-template pop(stack: var seq[float], name: string): float =
+template pop(stack: var seq[float]): float =
   block:
     if stack.len == 0:
       yield
-    command.elems.add stack.popImpl()
+    command.elems.add stack[^1]
+    stack.setLen stack.len - 1
     command.elems[^1]
 
 while true:
@@ -41,33 +38,33 @@ while true:
           command.exec = case c:
             of Add:
               (iterator () {.closure.} =
-                let a = stack.pop("+")
-                let b = stack.pop("+(" & $a & ")")
+                let a = stack.pop
+                let b = stack.pop
                 stack.add a+b)
             of Subtract:
               (iterator () {.closure.} =
-                let a = stack.pop("-")
-                let b = stack.pop("-(" & $a & ")")
-                stack.add a-b)
+                let a = stack.pop
+                let b = stack.pop
+                stack.add b-a)
             of Multiply:
               (iterator () {.closure.} =
-                let a = stack.pop("*")
-                let b = stack.pop("*(" & $a & ")")
+                let a = stack.pop
+                let b = stack.pop
                 stack.add a*b)
             of Divide:
               (iterator () {.closure.} =
-                let a = stack.pop("/")
-                let b = stack.pop("/(" & $a & ")")
-                stack.add a/b)
+                let a = stack.pop
+                let b = stack.pop
+                stack.add b/a)
             of TriDivide:
               (iterator () {.closure.} =
-                let a = stack.pop("")
-                let b = stack.pop("")
-                let c = stack.pop("")
+                let a = stack.pop
+                let b = stack.pop
+                let c = stack.pop
                 stack.add a/b/c)
             of Pop:
               (iterator () {.closure.} =
-                discard stack.pop("pop"))
+                discard stack.pop)
             of Exit:
               (iterator () {.closure.} =
                 echo ""
