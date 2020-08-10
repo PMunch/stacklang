@@ -1,12 +1,17 @@
 import stacklanglib
 import prompt, strutils
 
-var p = Prompt.init(promptIndicator = "> ")
+var
+  calc = newCalc()
+  p = Prompt.init(promptIndicator = "> ")
 p.showPrompt()
 
 while true:
   let
     input = p.readLine()
-    commands = input.splitWhitespace()
+    commands = tokenize(input)
 
-  echo commands
+  for command in commands:
+    calc.stack.pushValue(command)
+
+  echo calc.stack

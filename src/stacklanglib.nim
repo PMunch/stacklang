@@ -1,4 +1,4 @@
-import math, strutils
+import math, strutils, npeg
 
 type
   ElementKind* = enum String, Label, Number
@@ -10,7 +10,18 @@ type
       str*: string
     of Number:
       num*: float
+  Token = distinct string
   Stack*[T] = seq[T]
+  Calc* = ref object
+    stack*: Stack[Element]
+    #customCommands*: Table[string, seq[string]]
+    #tmpCommands*: Table[string, seq[string]]
+    #variables*: Table[string, Stack[Element]]
+    #randoms*: seq[string]
+    #messages: seq[seq[Message]]
+
+proc newCalc*(): Calc =
+  new result
 
 template push*[T](stack: var Stack[T], value: T) =
   stack.add value
@@ -33,8 +44,8 @@ proc pushLabel*(stack: var Stack[Element], x: string) =
   assert not x.contains ' ', "Label cannot contain spaces"
   stack.push Element(kind: Label, lbl: x)
 
-proc pushValue*(stack: var Stack[Element], value: string) =
-  case value:
+proc pushValue*(stack: var Stack[Element], value: Token) =
+  case value.string:
   of "pi":
     stack.push Element(kind: Number, num: Pi)
   of "tau":
@@ -43,13 +54,22 @@ proc pushValue*(stack: var Stack[Element], value: string) =
     stack.push Element(kind: Number, num: E)
   else:
     try:
-      stack.push Element(kind: Number, num: parseFloat(value))
+      stack.push Element(kind: Number, num: parseFloat(value.string))
     except:
-      if value[0] == '\\':
-        assert not value.contains ' ', "Label cannot contain spaces"
-        stack.push Element(kind: Label, lbl: value[1..^1])
-      elif value[0] == '"':
-        stack.push Element(kind: String, str: value[1..^2])
+      if value.string[0] == '"':
+        stack.push Element(kind: String, str: value.string[1..^2])
       else:
-        assert not value.contains ' ', "Label cannot contain spaces"
-        stack.push Element(kind: Label, lbl: value)
+        assert not value.string.contains ' ', "Label cannot contain spaces"
+        if value.string[0] == '\\':
+          stack.push Element(kind: Label, lbl: value.string[1..^1])
+        else:
+          stack.push Element(kind: Label, lbl: value.string)
+
+let parser = peg "tokens":
+  nonquoted <- ('\\' * '"') | (1-'"')
+  quoted <- >('"' * *nonquoted * '"')
+  token <- quoted | >(+Graph)
+  tokens <- +(token * ?' ')
+
+proc tokenize*(input: string): seq[Token] =
+  seq[Token](parser.match(input).captures)

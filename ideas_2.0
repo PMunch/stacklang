@@ -9,7 +9,7 @@
     input or document something
   No operations on strings (or just a very limited amount)! Don't want to open
     that can of worms
-- Documentating custom commands
+- Documenting custom commands
   `doc` command that adds a documentation string somewhere?
 - Types for custom commands?
   Partially typed? Added with the `doc` command? Would allow "read all" kind of

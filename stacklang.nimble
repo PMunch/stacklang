@@ -13,3 +13,4 @@ bin           = @["stacklang"]
 requires "nim >= 0.19.9"
 requires "termstyle"
 requires "https://github.com/PMunch/nim-prompt"
+requires "npeg"
