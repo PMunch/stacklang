@@ -9,9 +9,11 @@ p.showPrompt()
 while true:
   let
     input = p.readLine()
-    commands = tokenize(input)
+    tokens = tokenize(input)
 
-  for command in commands:
-    calc.stack.pushValue(command)
+  for token in tokens:
+    calc.evaluateToken(token):
+      calc.stack.pushValue(token)
+    calc.currentCommand.exec()
 
   echo calc.stack

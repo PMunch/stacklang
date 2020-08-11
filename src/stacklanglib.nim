@@ -1,4 +1,4 @@
-import math, strutils, npeg
+import math, strutils, npeg, operations
 
 type
   ElementKind* = enum String, Label, Number
@@ -14,11 +14,30 @@ type
   Stack*[T] = seq[T]
   Calc* = ref object
     stack*: Stack[Element]
+    currentCommand*: Command
     #customCommands*: Table[string, seq[string]]
     #tmpCommands*: Table[string, seq[string]]
     #variables*: Table[string, Stack[Element]]
     #randoms*: seq[string]
     #messages: seq[seq[Message]]
+  Command = ref object
+    name*: string
+    exec*: iterator()
+    elems*: seq[Element]
+
+
+defineCommands(Commands, Documentation, runCommand):
+  Plus = "+"; "Adds two numbers":
+    calc.stack.push(Element(kind: Number, num: calc.pop().num + calc.pop().num))
+  Minus = "-"; "Subtract two numbers":
+    calc.stack.push(Element(kind: Number, num: -calc.pop().num + calc.pop().num))
+  Multiply = "*"; "Multiplies two numbers":
+    calc.stack.push(Element(kind: Number, num: calc.pop().num * calc.pop().num))
+  Divide = "/"; "Divides two numbers":
+    let
+      a = calc.pop().num
+      b = calc.pop().num
+    calc.stack.push(Element(kind: Number, num: b / a))
 
 proc newCalc*(): Calc =
   new result
@@ -26,13 +45,13 @@ proc newCalc*(): Calc =
 template push*[T](stack: var Stack[T], value: T) =
   stack.add value
 
-template pop*[T](stack: var Stack[T]): T =
+template pop*(calc: var Calc): Element =
   block:
-    if stack.len == 0:
+    if calc.stack.len == 0:
       yield
-    command.elems.add stack[^1]
-    stack.setLen stack.len - 1
-    command.elems[^1]
+    calc.currentCommand.elems.add calc.stack[^1]
+    calc.stack.setLen calc.stack.len - 1
+    calc.currentCommand.elems[^1]
 
 proc pushNumber*(stack: var Stack[Element], x: float) =
   stack.push Element(kind: Number, num: x)
@@ -64,6 +83,12 @@ proc pushValue*(stack: var Stack[Element], value: Token) =
           stack.push Element(kind: Label, lbl: value.string[1..^1])
         else:
           stack.push Element(kind: Label, lbl: value.string)
+
+template evaluateToken*(calc: Calc, token: Token, elseBlock: untyped) =
+  calc.currentCommand = new Command
+  calc.currentCommand.name = token.string
+  calc.currentCommand.exec = runCommand(token.string):
+    elseBlock
 
 let parser = peg "tokens":
   nonquoted <- ('\\' * '"') | (1-'"')
