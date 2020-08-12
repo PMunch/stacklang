@@ -10,11 +10,11 @@ type
       str*: string
     of Number:
       num*: float
-  Token = distinct string
+  Token* = distinct string
   Stack*[T] = seq[T]
   Calc* = ref object
     stack*: Stack[Element]
-    currentCommand*: Command
+    awaitingCommands*: seq[Command]
     #customCommands*: Table[string, seq[string]]
     #tmpCommands*: Table[string, seq[string]]
     #variables*: Table[string, Stack[Element]]
@@ -27,17 +27,16 @@ type
 
 
 defineCommands(Commands, Documentation, runCommand):
-  Plus = "+"; "Adds two numbers":
-    calc.stack.push(Element(kind: Number, num: calc.pop().num + calc.pop().num))
-  Minus = "-"; "Subtract two numbers":
-    calc.stack.push(Element(kind: Number, num: -calc.pop().num + calc.pop().num))
-  Multiply = "*"; "Multiplies two numbers":
-    calc.stack.push(Element(kind: Number, num: calc.pop().num * calc.pop().num))
-  Divide = "/"; "Divides two numbers":
-    let
-      a = calc.pop().num
-      b = calc.pop().num
-    calc.stack.push(Element(kind: Number, num: b / a))
+  Plus = (n, n, "+"); "Adds two numbers":
+    calc.stack.push(Element(kind: Number, num: a + b))
+  Minus = (n, n, "-"); "Subtract two numbers":
+    calc.stack.push(Element(kind: Number, num: a - b))
+  Multiply = (n, n, "*"); "Multiplies two numbers":
+    calc.stack.push(Element(kind: Number, num: a * b))
+  Divide = (n, n, "/"); "Divides two numbers":
+    calc.stack.push(Element(kind: Number, num: a / b))
+  Pop = "pop"; "Pops a number of the stack, discarding it":
+    discard calc.pop()
 
 proc newCalc*(): Calc =
   new result
@@ -49,9 +48,9 @@ template pop*(calc: var Calc): Element =
   block:
     if calc.stack.len == 0:
       yield
-    calc.currentCommand.elems.add calc.stack[^1]
+    calc.awaitingCommands[^1].elems.add calc.stack[^1]
     calc.stack.setLen calc.stack.len - 1
-    calc.currentCommand.elems[^1]
+    calc.awaitingCommands[^1].elems[^1]
 
 proc pushNumber*(stack: var Stack[Element], x: float) =
   stack.push Element(kind: Number, num: x)
@@ -63,38 +62,70 @@ proc pushLabel*(stack: var Stack[Element], x: string) =
   assert not x.contains ' ', "Label cannot contain spaces"
   stack.push Element(kind: Label, lbl: x)
 
-proc pushValue*(stack: var Stack[Element], value: Token) =
+proc toElement*(value: Token): Element =
   case value.string:
   of "pi":
-    stack.push Element(kind: Number, num: Pi)
+    Element(kind: Number, num: Pi)
   of "tau":
-    stack.push Element(kind: Number, num: Tau)
+    Element(kind: Number, num: Tau)
   of "e":
-    stack.push Element(kind: Number, num: E)
+    Element(kind: Number, num: E)
   else:
     try:
-      stack.push Element(kind: Number, num: parseFloat(value.string))
+      Element(kind: Number, num: parseFloat(value.string))
     except:
       if value.string[0] == '"':
-        stack.push Element(kind: String, str: value.string[1..^2])
+        if value.string[^1] == '"' and value.string.len > 1:
+          Element(kind: String, str: value.string[1..^2])
+        else:
+          Element(kind: String, str: value.string[1..^1])
       else:
         assert not value.string.contains ' ', "Label cannot contain spaces"
         if value.string[0] == '\\':
-          stack.push Element(kind: Label, lbl: value.string[1..^1])
+          Element(kind: Label, lbl: value.string[1..^1])
         else:
-          stack.push Element(kind: Label, lbl: value.string)
+          Element(kind: Label, lbl: value.string)
+
+proc pushValue*(stack: var Stack[Element], value: Token) =
+  stack.push value.toElement
 
 template evaluateToken*(calc: Calc, token: Token, elseBlock: untyped) =
-  calc.currentCommand = new Command
-  calc.currentCommand.name = token.string
-  calc.currentCommand.exec = runCommand(token.string):
+  calc.awaitingCommands.add new Command
+  calc.awaitingCommands[^1].name = token.string
+  calc.awaitingCommands[^1].exec = runCommand(token.string):
     elseBlock
+  calc.awaitingCommands[^1].exec()
+  if calc.awaitingCommands[^1].exec.finished:
+    calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
 
-let parser = peg "tokens":
-  nonquoted <- ('\\' * '"') | (1-'"')
-  quoted <- >('"' * *nonquoted * '"')
-  token <- quoted | >(+Graph)
-  tokens <- +(token * ?' ')
+template execute*(calc: Calc) =
+  while calc.stack.len != 0 and calc.awaitingCommands.len != 0:
+    var i = calc.awaitingCommands[calc.awaitingCommands.high]
+    i.exec()
+    if i.exec.finished:
+      calc.awaitingCommands.setLen(calc.awaitingCommands.len-1)
 
-proc tokenize*(input: string): seq[Token] =
-  seq[Token](parser.match(input).captures)
+let
+  parser = peg "tokens":
+    nonquoted <- ('\\' * '"') | (1-'"')
+    quoted <- >('"' * *nonquoted * ?'"')
+    token <- quoted | >(+Graph)
+    tokens <- +(token * *' ')
+  wsparser = peg "wstokens":
+    nonquoted <- ('\\' * '"') | (1-'"')
+    quoted <- >('"' * *nonquoted * ?'"')
+    token <- quoted | >(+Graph)
+    whitespace <- >(*' ')
+    wstokens <- +(token * whitespace)
+
+proc tokenize*(input: string, withWhitespace = false): seq[Token] =
+  if withWhitespace:
+    seq[Token](wsparser.match(input).captures)
+  else:
+    seq[Token](parser.match(input).captures)
+
+proc isCommand*(cmd: Token): bool =
+  try:
+    discard parseEnum[Commands](cmd.string)
+    true
+  except: false

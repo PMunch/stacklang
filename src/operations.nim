@@ -1,4 +1,5 @@
-import macros, macroutils
+import macros except body
+import macroutils
 
 type
   StackError* = object of IndexError
@@ -6,6 +7,7 @@ type
 
 macro defineCommands*(enumName, docarrayName, runnerName,
   definitions: untyped): untyped =
+  echo definitions.treeRepr
   var
     enumDef = nnkTypeSection.newTree(
       nnkTypeDef.newTree(
@@ -41,13 +43,31 @@ macro defineCommands*(enumName, docarrayName, runnerName,
     let
       enumInfo = definitions[i]
       commandInfo = definitions[i+1]
-    enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1])
-    docstrings[0][2].add commandInfo[0]
-    echo commandInfo[1].repr
     let command = superQuote do:
       `cmd` = (iterator () {.closure.} =
         `commandInfo[1]`
       )
+    echo command.treeRepr
+    if enumInfo[1].kind == nnkStrLit:
+      enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1])
+    else:
+      enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1][^1])
+      var letter = 'a'
+      for kind in enumInfo[1][0..^2]:
+        let letterIdent = newIdentNode($letter)
+        command[1][0].body.insert(0, case $kind:
+          of "n": (quote do:
+            let `letterIdent` = calc.pop().num)
+          of "s": (quote do:
+            let `letterIdent` = calc.pop().str)
+          of "l": (quote do:
+            let `letterIdent` = calc.pop().lbl)
+          of "a": (quote do:
+            let `letterIdent` = calc.pop())
+          else: (quote do:
+            assert false))
+        letter = chr(letter.ord + 1)
+    docstrings[0][2].add commandInfo[0]
     caseSwitch.add nnkOfBranch.newTree(
       enumInfo[0],
       command)
