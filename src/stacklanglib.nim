@@ -1,7 +1,8 @@
-import math, strutils, npeg, operations
+import math, strutils, npeg
 
 type
   ElementKind* = enum String, Label, Number
+  Encoding* = enum Decimal, Binary, Hexadecimal
   Element* = object
     case kind*: ElementKind
     of Label:
@@ -9,6 +10,7 @@ type
     of String:
       str*: string
     of Number:
+      encoding*: Encoding
       num*: float
   Token* = distinct string
   Stack*[T] = seq[T]
@@ -24,19 +26,34 @@ type
     name*: string
     exec*: iterator()
     elems*: seq[Element]
+  StackLangError* = object of CatchableError
+  InputError* = object of StackLangError
+    input: string
+  ArgumentError* = object of StackLangError
+    currentCommand*: Command
 
+include operations
 
 defineCommands(Commands, Documentation, runCommand):
   Plus = (n, n, "+"); "Adds two numbers":
-    calc.stack.push(Element(kind: Number, num: a + b))
+    calc.stack.push(Element(kind: Number, num: a + b, encoding: a_encoding))
   Minus = (n, n, "-"); "Subtract two numbers":
-    calc.stack.push(Element(kind: Number, num: a - b))
+    calc.stack.push(Element(kind: Number, num: a - b, encoding: a_encoding))
   Multiply = (n, n, "*"); "Multiplies two numbers":
-    calc.stack.push(Element(kind: Number, num: a * b))
+    calc.stack.push(Element(kind: Number, num: a * b, encoding: a_encoding))
   Divide = (n, n, "/"); "Divides two numbers":
-    calc.stack.push(Element(kind: Number, num: a / b))
-  Pop = "pop"; "Pops a number of the stack, discarding it":
-    discard calc.pop()
+    calc.stack.push(Element(kind: Number, num: a / b, encoding: a_encoding))
+  Pop = (a, "pop"); "Pops an element off the stack, discarding it":
+    discard
+  Swap = (a, a, "swap"); "Swaps the two topmost elements of the stack":
+    calc.stack.push b
+    calc.stack.push a
+  Hex = (n, "hex"); "Converts a number to hex encoding":
+    calc.stack.push(Element(kind: Number, num: a, encoding: Hexadecimal))
+  Bin = (n, "bin"); "Converts a number to binary encoding":
+    calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
+  Dec = (n, "dec"); "Converts a number to decimal encoding":
+    calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
 
 proc newCalc*(): Calc =
   new result
@@ -58,8 +75,14 @@ proc pushNumber*(stack: var Stack[Element], x: float) =
 proc pushString*(stack: var Stack[Element], x: string) =
   stack.push Element(kind: String, str: x)
 
+template labelVerify(x: string) =
+  if x.contains ' ':
+    var e = newException(InputError, "Label cannot contain spaces")
+    e.input = x
+    raise e
+
 proc pushLabel*(stack: var Stack[Element], x: string) =
-  assert not x.contains ' ', "Label cannot contain spaces"
+  x.labelVerify
   stack.push Element(kind: Label, lbl: x)
 
 proc toElement*(value: Token): Element =
@@ -79,8 +102,25 @@ proc toElement*(value: Token): Element =
           Element(kind: String, str: value.string[1..^2])
         else:
           Element(kind: String, str: value.string[1..^1])
+      elif value.string[0] == '0':
+        case value.string[1]
+        of 'x':
+          if value.string.len == 2:
+            Element(kind: Number, num: 0.0, encoding: Hexadecimal)
+          else:
+            Element(kind: Number, num: parseHexInt(value.string).float, encoding: Hexadecimal)
+        of 'b':
+          if value.string.len == 2:
+            Element(kind: Number, num: 0.0, encoding: Binary)
+          else:
+            Element(kind: Number, num: parseBinInt(value.string).float, encoding: Binary)
+        else:
+          var e = newException(InputError, "Unknown encoding")
+          e.input = value.string
+          raise e
+
       else:
-        assert not value.string.contains ' ', "Label cannot contain spaces"
+        value.string.labelVerify
         if value.string[0] == '\\':
           Element(kind: Label, lbl: value.string[1..^1])
         else:
@@ -89,19 +129,22 @@ proc toElement*(value: Token): Element =
 proc pushValue*(stack: var Stack[Element], value: Token) =
   stack.push value.toElement
 
+template stepCommand*(command: Command) =
+  command.exec()
+
 template evaluateToken*(calc: Calc, token: Token, elseBlock: untyped) =
   calc.awaitingCommands.add new Command
   calc.awaitingCommands[^1].name = token.string
   calc.awaitingCommands[^1].exec = runCommand(token.string):
     elseBlock
-  calc.awaitingCommands[^1].exec()
+  calc.awaitingCommands[^1].stepCommand()
   if calc.awaitingCommands[^1].exec.finished:
     calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
 
 template execute*(calc: Calc) =
   while calc.stack.len != 0 and calc.awaitingCommands.len != 0:
     var i = calc.awaitingCommands[calc.awaitingCommands.high]
-    i.exec()
+    i.stepCommand()
     if i.exec.finished:
       calc.awaitingCommands.setLen(calc.awaitingCommands.len-1)
 
