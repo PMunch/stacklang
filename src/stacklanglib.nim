@@ -12,6 +12,10 @@ type
     of Number:
       encoding*: Encoding
       num*: float
+  Argument = enum AString, ALabel, ANumber, AAny
+  Documentation = object
+    msg: string
+    arguments: seq[Argument]
   Token* = distinct string
   Stack*[T] = seq[T]
   Calc* = ref object
@@ -34,7 +38,7 @@ type
 
 include operations
 
-defineCommands(Commands, Documentation, runCommand):
+defineCommands(Commands, documentation, runCommand):
   Plus = (n, n, "+"); "Adds two numbers":
     calc.stack.push(Element(kind: Number, num: a + b, encoding: a_encoding))
   Minus = (n, n, "-"); "Subtract two numbers":
@@ -48,12 +52,16 @@ defineCommands(Commands, Documentation, runCommand):
   Swap = (a, a, "swap"); "Swaps the two topmost elements of the stack":
     calc.stack.push b
     calc.stack.push a
+  Rot = (a, "rot"); "Rotates the stack, putting the topmost element on the bottom":
+    calc.stack.insert a
   Hex = (n, "hex"); "Converts a number to hex encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Hexadecimal))
   Bin = (n, "bin"); "Converts a number to binary encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
   Dec = (n, "dec"); "Converts a number to decimal encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
+  Len = "len"; "Puts the length of the stack on the stack":
+    calc.stack.push(Element(kind: Number, num: calc.stack.len.float))
 
 proc newCalc*(): Calc =
   new result

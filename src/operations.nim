@@ -29,7 +29,7 @@ macro defineCommands*(enumName, docarrayName, runnerName,
         nnkBracketExpr.newTree(
           newIdentNode("array"),
           enumName,
-          newIdentNode("string")
+          newIdentNode("Documentation")
         ),
         nnkBracket.newTree()))
     templateArgument = newIdentNode("command")
@@ -50,6 +50,8 @@ macro defineCommands*(enumName, docarrayName, runnerName,
       `cmd` = (iterator () {.closure.} =
         `commandInfo[1]`
       )
+    let documentation = superQuote do:
+      Documentation(msg: `commandInfo[0]`, arguments: @[])
     if enumInfo[1].kind == nnkStrLit:
       enumDef[0][2].add nnkEnumFieldDef.newtree(enumInfo[0], enumInfo[1])
     else:
@@ -71,8 +73,14 @@ macro defineCommands*(enumName, docarrayName, runnerName,
             let `letterIdent` = calc.pop())
           else: (quote do:
             assert false))
+        documentation[^1][1][1].add(case $kind:
+          of "n": newIdentNode("ANumber")
+          of "s": newIdentNode("AString")
+          of "l": newIdentNode("ALabel")
+          of "a": newIdentNode("AAny")
+          else: nnkDiscardStmt.newTree)
         letter = chr(letter.ord + 1)
-    docstrings[0][2].add commandInfo[0]
+    docstrings[0][2].add documentation #commandInfo[0]
     caseSwitch.add nnkOfBranch.newTree(
       enumInfo[0],
       command)

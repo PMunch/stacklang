@@ -60,7 +60,12 @@ while true:
         if token.string == "exit":
           echo ""
           quit 0
-        calc.stack.pushValue(token)
+        elif token.string == "help":
+          stdout.write "\n"
+          for cmd in Commands:
+            echo cmd, " ", documentation[cmd].msg
+        else:
+          calc.stack.pushValue(token)
     calc.execute()
   except ArgumentError as e:
     echo red("\nError consuming element #", e.currentCommand.elems.len, ": "), e.currentCommand.elems[^1], red(", in command: ", e.currentCommand.name)
