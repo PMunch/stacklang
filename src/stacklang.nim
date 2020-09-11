@@ -2,6 +2,7 @@ import stacklanglib
 import prompt, unicode, termstyle
 import strutils except tokenize
 import sequtils, math
+import nancy
 
 proc presentNumber(n: Element): string =
   case n.encoding:
@@ -62,8 +63,10 @@ while true:
           quit 0
         elif token.string == "help":
           stdout.write "\n"
+          var help: TerminalTable
           for cmd in Commands:
-            echo cmd, " ", documentation[cmd].msg
+            help.add bold $cmd, documentation[cmd].msg
+          help.echoTable(padding = 3)
         else:
           calc.stack.pushValue(token)
     calc.execute()

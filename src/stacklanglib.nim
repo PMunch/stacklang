@@ -49,6 +49,9 @@ defineCommands(Commands, documentation, runCommand):
     calc.stack.push(Element(kind: Number, num: a / b, encoding: a_encoding))
   Pop = (a, "pop"); "Pops an element off the stack, discarding it":
     discard
+  Dup = (a, "dup"); "Duplicates the topmost element on the stack":
+    calc.stack.push(a)
+    calc.stack.push(a)
   Swap = (a, a, "swap"); "Swaps the two topmost elements of the stack":
     calc.stack.push b
     calc.stack.push a
