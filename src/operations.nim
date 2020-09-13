@@ -11,6 +11,7 @@ template assureKind(expectedKind: ElementKind, element: untyped): Element =
 
 macro defineCommands*(enumName, docarrayName, runnerName,
   definitions: untyped): untyped =
+  let calc = newIdentNode("calc")
   var
     enumDef = nnkTypeSection.newTree(
       nnkTypeDef.newTree(
@@ -60,19 +61,17 @@ macro defineCommands*(enumName, docarrayName, runnerName,
       for kind in enumInfo[1][0..^2]:
         let letterIdent = newIdentNode($letter)
         let letterIdentEnc = newIdentNode($letter & "_encoding")
-        command[1][0].body.insert(0, case $kind:
-          of "n": (quote do:
-            let n = assureKind(Number, calc.pop())
+        command[1][0].body.insert(0, case parseEnum[Argument]($kind):
+          of ANumber: (quote do:
+            let n = assureKind(Number, `calc`.pop())
             let `letterIdent` = n.num
             let `letterIdentEnc` = n.encoding)
-          of "s": (quote do:
-            let `letterIdent` = calc.pop().str)
-          of "l": (quote do:
-            let `letterIdent` = calc.pop().lbl)
-          of "a": (quote do:
-            let `letterIdent` = calc.pop())
-          else: (quote do:
-            assert false))
+          of AString: (quote do:
+            let `letterIdent` = `calc`.pop().str)
+          of ALabel: (quote do:
+            let `letterIdent` = `calc`.pop().lbl)
+          of AAny: (quote do:
+            let `letterIdent` = `calc`.pop()))
         documentation[^1][1][1].add(case $kind:
           of "n": newIdentNode("ANumber")
           of "s": newIdentNode("AString")
@@ -84,22 +83,20 @@ macro defineCommands*(enumName, docarrayName, runnerName,
     caseSwitch.add nnkOfBranch.newTree(
       enumInfo[0],
       command)
+  let parseFail = newIdentNode("parseFail")
   result = quote do:
     `enumDef`
     `docstrings`
-    template `runnerName`(`templateArgument`: untyped, parseFail: untyped): untyped {.dirty.} =
+    proc `runnerName`*(`calc`: Calc, `templateArgument`: string, `parseFail`: iterator() {.closure.}): iterator() {.closure.} =
       var `cmd`: iterator() {.closure.}
       block runnerBody:
         var `parsedEnum`: `enumName`
         try:
           `parsedEnum` = `parseStmt`
         except:
-          `cmd` = (iterator () {.closure.} =
-            parseFail
-          )
+          `cmd` = `parseFail`
           break runnerBody
         `caseSwitch`
       `cmd`
   when defined(echoOperations):
-
     echo result.repr

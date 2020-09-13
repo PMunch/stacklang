@@ -1,7 +1,7 @@
 import stacklanglib
 import prompt, unicode, termstyle
 import strutils except tokenize
-import sequtils, math
+import sequtils, math, tables
 import nancy
 
 proc presentNumber(n: Element): string =
@@ -26,10 +26,18 @@ proc presentNumber(n: Element): string =
   of Binary:
     "0b" & n.num.int.toBin(64).strip(trailing = false, chars = {'0'})
 
+var calc = newCalc()
+
 proc `$`(elem: Element): string =
   case elem.kind:
     of Label:
-      if elem.lbl.Token.isCommand: bold elem.lbl else: elem.lbl
+      if calc.isCommand(elem.lbl.Token) or elem.lbl in ["help", "exit"]:
+        if calc.customCommands.hasKey(elem.lbl):
+          italic bold elem.lbl
+        else:
+          bold elem.lbl
+      else:
+        elem.lbl
     of Number: blue elem.presentNumber
     of String: yellow "\"" & elem.str & "\""
 
@@ -40,14 +48,18 @@ proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
     else:
       result &= toRunes(case part.toElement().kind:
         of Label:
-          if part.isCommand: bold part.string else: part.string
+          if calc.isCommand(part) or part.string in ["help", "exit"]:
+            if calc.customCommands.hasKey(part.string):
+              italic bold part.string
+            else:
+              bold part.string
+          else:
+            part.string
         of Number: blue part.string
         of String: yellow part.string
       )
 
-var
-  calc = newCalc()
-  p = Prompt.init(promptIndicator = "> ", colorize = colorize)
+var p = Prompt.init(promptIndicator = "> ", colorize = colorize)
 p.showPrompt()
 
 while true:
@@ -57,7 +69,7 @@ while true:
   let backup = deepCopy calc
   try:
     for token in tokens:
-      calc.evaluateToken(token):
+      calc.evaluateToken(token, iterator (){.closure.} =
         if token.string == "exit":
           echo ""
           quit 0
@@ -65,17 +77,34 @@ while true:
           stdout.write "\n"
           var help: TerminalTable
           for cmd in Commands:
-            help.add bold $cmd, documentation[cmd].msg
+            var arguments: string
+            for i, argument in documentation[cmd].arguments:
+              arguments &=
+                (if i == 0: "" else: "") &
+                $argument &
+                (if i == documentation[cmd].arguments.high: "" else: ", ")
+            help.add bold $cmd, arguments, documentation[cmd].msg
           help.echoTable(padding = 3)
         else:
-          calc.stack.pushValue(token)
+          calc.stack.pushValue(token))
     calc.execute()
   except ArgumentError as e:
-    echo red("\nError consuming element #", e.currentCommand.elems.len, ": "), e.currentCommand.elems[^1], red(", in command: ", e.currentCommand.name)
+    echo red("\nError consuming element #", e.currentCommand.elems.len + 1, ": "), e.currentCommand.elems[^1], red ", in command: ", bold e.currentCommand.name
+    stdout.write red e.msg
+    calc = backup
+  except InputError as e:
+    echo red("\nError with input: "), e.input
     stdout.write red e.msg
     calc = backup
 
+  if calc.stack.len != 0:
+    echo ""
+    stdout.write calc.stack.map(`$`).join "  "
   echo ""
-  stdout.write calc.stack.map(`$`).join "  "
-  stdout.write " | " & $calc.awaitingCommands.len
-  echo ""
+  var indicator = ""
+  for awaiting in calc.awaitingCommands:
+    indicator &= "["
+    for argument in awaiting.elems:
+      indicator &= $argument & " "
+    indicator &= awaiting.name.bold & "] "
+  p.setIndicator(indicator & "> ")
