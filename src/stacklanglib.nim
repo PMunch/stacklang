@@ -177,7 +177,7 @@ defineCommands(Commands, documentation, runCommand):
   Divide = (n, n, "/"); "Divides two numbers":
     calc.stack.push(Element(kind: Number, num: a / b, encoding: a_encoding))
   Pop = (a, "pop"); "Pops an element off the stack, discarding it":
-    discard
+    discard a
   Dup = (a, "dup"); "Duplicates the topmost element on the stack":
     calc.stack.push(a)
     calc.stack.push(a)
@@ -210,15 +210,10 @@ defineCommands(Commands, documentation, runCommand):
     of Number:
       while calc.stack.len.float != a.num:
         runIteration()
-    of Label:
+    of Label, String:
       while true:
         if calc.stack.len == 0: yield
-        if calc.stack[^1].kind == Label and calc.stack[^1].lbl == a.lbl: break
-        runIteration()
-    of String:
-      while true:
-        if calc.stack.len == 0: yield
-        if calc.stack[^1].kind == String and calc.stack[^1].str == a.str: break
+        if calc.stack[^1] == a: break
         runIteration()
   MakeCommand = (a, "mkcmd"); "Takes a label or a position and creates a command of everything from that position to the end of the stack":
     case a.kind:
@@ -229,9 +224,9 @@ defineCommands(Commands, documentation, runCommand):
         calc.stack.setLen(pos+1)
     else: discard
   Call = (l, "call"); "Calls the given label as a command":
-    calc.evaluateToken(a.Token, iterator() {.closure.} =
-      discard # Should be an error
-    )
+    calc.evaluateToken(a.Token, parseFail) #iterator() {.closure.} =
+    #  discard # Should be an error
+    #)
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
   try:
