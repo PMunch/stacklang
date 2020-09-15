@@ -23,6 +23,7 @@ type
     stack*: Stack[Element]
     awaitingCommands*: seq[Command]
     customCommands*: Table[string, seq[Element]]
+    documentation*: Table[string, seq[Documentation]]
     #tmpCommands*: Table[string, seq[string]]
     #variables*: Table[string, Stack[Element]]
     #randoms*: seq[string]
@@ -174,7 +175,7 @@ proc `==`*(a, b: Element): bool =
     of Number: a.num == b.num
     of String: a.str == b.str
 
-defineCommands(Commands, documentation, runCommand):
+defineCommands(ArithmeticCommands, arithmeticDocumentation, runArithmetic):
   Plus = (n, n, "+"); "Adds two numbers":
     calc.stack.push(Element(kind: Number, num: a + b, encoding: a_encoding))
   Minus = (n, n, "-"); "Subtract two numbers":
@@ -183,6 +184,8 @@ defineCommands(Commands, documentation, runCommand):
     calc.stack.push(Element(kind: Number, num: a * b, encoding: a_encoding))
   Divide = (n, n, "/"); "Divides two numbers":
     calc.stack.push(Element(kind: Number, num: a / b, encoding: a_encoding))
+
+defineCommands(Commands, documentation, runCommand):
   Pop = (a, "pop"); "Pops an element off the stack, discarding it":
     discard a
   Dup = (a, "dup"); "Duplicates the topmost element on the stack":
@@ -243,7 +246,15 @@ proc isCommand*(calc: Calc, cmd: Token): bool =
 
 proc newCalc*(): Calc =
   new result
-  result.commandRunners.add runCommand
 
-proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner) =
+proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner, documentationCategory = "", documentation: openArray[Documentation] = []) =
   calc.commandRunners.add commandRunner
+  if documentation.len != 0:
+    if not calc.documentation.hasKey documentationCategory:
+      calc.documentation[documentationCategory] = @[]
+    for doc in documentation:
+      calc.documentation[documentationCategory].add doc
+
+proc registerDefaults*(calc: Calc) =
+  calc.registerCommandRunner runArithmetic, "Arithmetic", arithmeticDocumentation
+  calc.registerCommandRunner runCommand, "Other", documentation

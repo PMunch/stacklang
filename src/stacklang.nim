@@ -27,11 +27,25 @@ proc presentNumber(n: Element): string =
     "0b" & n.num.int.toBin(64).strip(trailing = false, chars = {'0'})
 
 var calc = newCalc()
+calc.registerDefaults()
+#template helpSection
+echo calc.documentation
 calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator() {.closure.}] =
   if argument == "help":
     some(iterator() {.closure.} =
       stdout.write "\n"
       var help: TerminalTable
+      for category in calc.documentation.keys:
+        echo category & " commands:"
+        for doc in calc.documentation[category]:
+          var arguments: string
+          for i, argument in doc.arguments:
+            arguments &=
+              (if i == 0: "" else: "") &
+              $argument &
+              (if i == doc.arguments.high: "" else: ", ")
+          help.add bold "", arguments, doc.msg
+      echo ""
       for cmd in Commands:
         var arguments: string
         for i, argument in documentation[cmd].arguments:
