@@ -1,4 +1,4 @@
-import math, strutils, npeg, tables, hashes
+import math, strutils, npeg, tables, hashes, options
 
 type
   ElementKind* = enum String, Label, Number
@@ -19,6 +19,7 @@ type
   Token* = distinct string
   Stack*[T] = seq[T]
   Calc* = ref object
+    commandRunners: seq[CommandRunner]
     stack*: Stack[Element]
     awaitingCommands*: seq[Command]
     customCommands*: Table[string, seq[Element]]
@@ -35,10 +36,8 @@ type
     input*: string
   ArgumentError* = object of StackLangError
     currentCommand*: Command
+  CommandRunner* = proc (calc: Calc, argument: string): Option[iterator() {.closure.}]
 
-
-proc newCalc*(): Calc =
-  new result
 
 template push*[T](stack: var Stack[T], value: T) =
   stack.add value
@@ -114,19 +113,27 @@ proc pushValue*(stack: var Stack[Element], value: Token) =
 template stepCommand*(command: Command) =
   command.exec()
 
-proc runCommand*(calc: Calc, command: string, parseFail: iterator() {.closure.}): iterator() {.closure.}
+proc runCommand*(calc: Calc, command: string): Option[iterator() {.closure.}]
 
-proc evaluateToken*(calc: Calc, token: Token, elseBlock: iterator() {.closure.}) =
+proc evaluateToken*(calc: Calc, token: Token) =
   if calc.customCommands.hasKey(token.string):
     for element in calc.customCommands[token.string]:
       case element.kind:
       of Number, String: calc.stack.add element
       of Label:
-        calc.evaluateToken(Token(element.lbl), elseBlock)
+        if element.lbl[0] != '\\':
+          calc.evaluateToken(Token(element.lbl))
+        else:
+          calc.stack.add Token(element.lbl[1..^1]).toElement
   else:
     calc.awaitingCommands.add new Command
     calc.awaitingCommands[^1].name = token.string
-    calc.awaitingCommands[^1].exec = calc.runCommand(token.string, elseBlock)
+    calc.awaitingCommands[^1].exec = block:
+      var command: Option[iterator() {.closure.}]
+      for runner in calc.commandRunners:
+        command = calc.runner(token.string)
+        if command.isSome: break
+      command.get
     calc.awaitingCommands[^1].stepCommand()
     if calc.awaitingCommands[^1].exec.finished:
       calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
@@ -201,8 +208,7 @@ defineCommands(Commands, documentation, runCommand):
       raise e
     var iterationsLeft = 100_000
     template runIteration() =
-      calc.evaluateToken(b.Token):
-        discard
+      calc.evaluateToken(b.Token)
       dec iterationsLeft
       if iterationsLeft == 0:
         raise newException(StackLangError, "Until ran for too many iterations")
@@ -224,7 +230,7 @@ defineCommands(Commands, documentation, runCommand):
         calc.stack.setLen(pos+1)
     else: discard
   Call = (l, "call"); "Calls the given label as a command":
-    calc.evaluateToken(a.Token, parseFail) #iterator() {.closure.} =
+    calc.evaluateToken(a.Token) #iterator() {.closure.} =
     #  discard # Should be an error
     #)
 
@@ -234,3 +240,10 @@ proc isCommand*(calc: Calc, cmd: Token): bool =
     true
   except:
     calc.customCommands.hasKey cmd.string
+
+proc newCalc*(): Calc =
+  new result
+  result.commandRunners.add runCommand
+
+proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner) =
+  calc.commandRunners.add commandRunner

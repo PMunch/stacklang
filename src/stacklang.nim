@@ -1,7 +1,7 @@
 import stacklanglib
 import prompt, unicode, termstyle
 import strutils except tokenize
-import sequtils, math, tables
+import sequtils, math, tables, options
 import nancy
 
 proc presentNumber(n: Element): string =
@@ -27,6 +27,27 @@ proc presentNumber(n: Element): string =
     "0b" & n.num.int.toBin(64).strip(trailing = false, chars = {'0'})
 
 var calc = newCalc()
+calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator() {.closure.}] =
+  if argument == "help":
+    some(iterator() {.closure.} =
+      stdout.write "\n"
+      var help: TerminalTable
+      for cmd in Commands:
+        var arguments: string
+        for i, argument in documentation[cmd].arguments:
+          arguments &=
+            (if i == 0: "" else: "") &
+            $argument &
+            (if i == documentation[cmd].arguments.high: "" else: ", ")
+        help.add bold $cmd, arguments, documentation[cmd].msg
+      help.echoTable(padding = 3))
+  elif argument == "exit":
+    some(iterator() {.closure.} =
+      echo ""
+      quit 0)
+  else:
+    some(iterator() {.closure.} =
+      calc.stack.pushValue(argument.Token)))
 
 proc `$`(elem: Element): string =
   case elem.kind:
@@ -69,24 +90,7 @@ while true:
   let backup = deepCopy calc
   try:
     for token in tokens:
-      calc.evaluateToken(token, iterator (){.closure.} =
-        if token.string == "exit":
-          echo ""
-          quit 0
-        elif token.string == "help":
-          stdout.write "\n"
-          var help: TerminalTable
-          for cmd in Commands:
-            var arguments: string
-            for i, argument in documentation[cmd].arguments:
-              arguments &=
-                (if i == 0: "" else: "") &
-                $argument &
-                (if i == documentation[cmd].arguments.high: "" else: ", ")
-            help.add bold $cmd, arguments, documentation[cmd].msg
-          help.echoTable(padding = 3)
-        else:
-          calc.stack.pushValue(token))
+      calc.evaluateToken(token)
     calc.execute()
   except ArgumentError as e:
     echo red("\nError consuming element #", e.currentCommand.elems.len + 1, ": "), e.currentCommand.elems[^1], red ", in command: ", bold e.currentCommand.name

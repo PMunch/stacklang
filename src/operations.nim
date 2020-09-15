@@ -48,7 +48,7 @@ macro defineCommands*(enumName, docarrayName, runnerName,
       enumInfo = definitions[i]
       commandInfo = definitions[i+1]
     let command = superQuote do:
-      `cmd` = (iterator () {.closure.} =
+      `cmd` = some(iterator () {.closure.} =
         `commandInfo[1]`
       )
     let documentation = superQuote do:
@@ -61,7 +61,7 @@ macro defineCommands*(enumName, docarrayName, runnerName,
       for kind in enumInfo[1][0..^2]:
         let letterIdent = newIdentNode($letter)
         let letterIdentEnc = newIdentNode($letter & "_encoding")
-        command[1][0].body.insert(0, case parseEnum[Argument]($kind):
+        command[1][1].body.insert(0, case parseEnum[Argument]($kind):
           of ANumber: (quote do:
             let n = assureKind(Number, `calc`.pop())
             let `letterIdent` = n.num
@@ -83,18 +83,16 @@ macro defineCommands*(enumName, docarrayName, runnerName,
     caseSwitch.add nnkOfBranch.newTree(
       enumInfo[0],
       command)
-  let parseFail = newIdentNode("parseFail")
   result = quote do:
     `enumDef`
     `docstrings`
-    proc `runnerName`*(`calc`: Calc, `templateArgument`: string, `parseFail`: iterator() {.closure.}): iterator() {.closure.} =
-      var `cmd`: iterator() {.closure.}
+    proc `runnerName`*(`calc`: Calc, `templateArgument`: string): Option[iterator() {.closure.}] =
+      var `cmd`: Option[iterator() {.closure.}]
       block runnerBody:
         var `parsedEnum`: `enumName`
         try:
           `parsedEnum` = `parseStmt`
         except:
-          `cmd` = `parseFail`
           break runnerBody
         `caseSwitch`
       `cmd`
