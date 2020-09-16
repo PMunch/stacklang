@@ -23,7 +23,7 @@ type
     stack*: Stack[Element]
     awaitingCommands*: seq[Command]
     customCommands*: Table[string, seq[Element]]
-    documentation*: Table[string, seq[Documentation]]
+    documentation*: Table[string, OrderedTable[string, Documentation]]
     #tmpCommands*: Table[string, seq[string]]
     #variables*: Table[string, Stack[Element]]
     #randoms*: seq[string]
@@ -185,7 +185,7 @@ defineCommands(ArithmeticCommands, arithmeticDocumentation, runArithmetic):
   Divide = (n, n, "/"); "Divides two numbers":
     calc.stack.push(Element(kind: Number, num: a / b, encoding: a_encoding))
 
-defineCommands(Commands, documentation, runCommand):
+defineCommands(StackCommands, stackDocumentation, runStack):
   Pop = (a, "pop"); "Pops an element off the stack, discarding it":
     discard a
   Dup = (a, "dup"); "Duplicates the topmost element on the stack":
@@ -196,14 +196,16 @@ defineCommands(Commands, documentation, runCommand):
     calc.stack.push a
   Rot = (a, "rot"); "Rotates the stack, putting the topmost element on the bottom":
     calc.stack.insert a
+  Len = "len"; "Puts the length of the stack on the stack":
+    calc.stack.push(Element(kind: Number, num: calc.stack.len.float))
+
+defineCommands(Commands, documentation, runCommand):
   Hex = (n, "hex"); "Converts a number to hex encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Hexadecimal))
   Bin = (n, "bin"); "Converts a number to binary encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
   Dec = (n, "dec"); "Converts a number to decimal encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
-  Len = "len"; "Puts the length of the stack on the stack":
-    calc.stack.push(Element(kind: Number, num: calc.stack.len.float))
   Until = (a, l, "until"); "Takes a label or a length and runs the given command until the stack is that length or the label is the topmost element":
     if not calc.isCommand(b.Token):
       var e = newException(InputError, "Label is not a command")
@@ -247,14 +249,18 @@ proc isCommand*(calc: Calc, cmd: Token): bool =
 proc newCalc*(): Calc =
   new result
 
-proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner, documentationCategory = "", documentation: openArray[Documentation] = []) =
+proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner) =
+  calc.commandRunners.add commandRunner
+
+proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner, commands: typedesc[enum], documentationCategory: string, documentation: openArray[Documentation]) =
   calc.commandRunners.add commandRunner
   if documentation.len != 0:
     if not calc.documentation.hasKey documentationCategory:
-      calc.documentation[documentationCategory] = @[]
-    for doc in documentation:
-      calc.documentation[documentationCategory].add doc
+      calc.documentation[documentationCategory] = initOrderedTable[string, Documentation]()
+    for cmd in commands:
+      calc.documentation[documentationCategory][$cmd] = documentation[cmd.int]
 
 proc registerDefaults*(calc: Calc) =
-  calc.registerCommandRunner runArithmetic, "Arithmetic", arithmeticDocumentation
-  calc.registerCommandRunner runCommand, "Other", documentation
+  calc.registerCommandRunner runArithmetic, ArithmeticCommands, "Arithmetic", arithmeticDocumentation
+  calc.registerCommandRunner runCommand, Commands, "Other", documentation
+  calc.registerCommandRunner runStack, StackCommands, "Stack", stackDocumentation

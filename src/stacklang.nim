@@ -26,42 +26,82 @@ proc presentNumber(n: Element): string =
   of Binary:
     "0b" & n.num.int.toBin(64).strip(trailing = false, chars = {'0'})
 
-var calc = newCalc()
+var
+  calc = newCalc()
+  commandHistory: seq[seq[Token]]
 calc.registerDefaults()
-#template helpSection
-echo calc.documentation
-calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator() {.closure.}] =
-  if argument == "help":
-    some(iterator() {.closure.} =
-      stdout.write "\n"
+
+defineCommands(ShellCommands, shellDocumentation, runShell):
+  Exit = "exit"; "Exits interactive stacklang":
+    echo ""
+    quit 0
+  Help = "help"; "Prints out all documentation":
+    stdout.write "\n"
+    for category in calc.documentation.keys:
       var help: TerminalTable
-      for category in calc.documentation.keys:
-        echo category & " commands:"
-        for doc in calc.documentation[category]:
-          var arguments: string
-          for i, argument in doc.arguments:
-            arguments &=
-              (if i == 0: "" else: "") &
-              $argument &
-              (if i == doc.arguments.high: "" else: ", ")
-          help.add bold "", arguments, doc.msg
-      echo ""
-      for cmd in Commands:
+      echo category & " commands:"
+      for cmd, doc in calc.documentation[category]:
         var arguments: string
-        for i, argument in documentation[cmd].arguments:
+        for i, argument in doc.arguments:
           arguments &=
             (if i == 0: "" else: "") &
             $argument &
-            (if i == documentation[cmd].arguments.high: "" else: ", ")
-        help.add bold $cmd, arguments, documentation[cmd].msg
-      help.echoTable(padding = 3))
-  elif argument == "exit":
-    some(iterator() {.closure.} =
+            (if i == doc.arguments.high: "" else: ", ")
+        help.add bold cmd, arguments, doc.msg
+      help.echoTable(padding = 3)
       echo ""
-      quit 0)
+
+calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
+
+
+template raiseInputError(msg, argument: string): untyped =
+  var e = newException(InputError, msg)
+  e.input = argument
+  raise e
+
+calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator() {.closure.}] =
+  if argument[0] == '!':
+    some(iterator() {.closure.} =
+      try:
+        var
+          parts = argument[1..^1].split(':')
+          pos = parseInt(parts[0])
+        if commandHistory.high == pos and parts.len == 1:
+          raiseInputError("Can't expand current command", argument)
+        if pos < 0:
+          pos += commandHistory.high
+        if commandHistory.high < pos or pos < 0:
+          raiseInputError("Can't expand command, not enough commands", argument)
+        case parts.len:
+        of 1:
+          for token in commandHistory[pos]:
+            calc.evaluateToken token
+        of 2:
+          let subrange = parts[1].split('-')
+          case subrange.len:
+          of 1:
+            let sub = parseInt(parts[1])
+            if commandHistory[pos].high < sub:
+              raiseInputError("Can't expand command, no such sub-command", argument)
+            calc.evaluateToken commandHistory[pos][sub]
+          of 2:
+            let
+              start = parseInt(subrange[0])
+              stop = parseInt(subrange[1])
+            if stop < start or commandHistory[pos].high < start or commandHistory[pos].high > stop:
+              raiseInputError("Can't expand command, no such sub-command", argument)
+            for i in start..stop:
+              calc.evaluateToken commandHistory[pos][i]
+          else:
+            raiseInputError("Can't expand command, unable to parse segments", argument)
+        else:
+          raiseInputError("Can't expand command, too many segments", argument)
+      except ValueError:
+        raiseInputError("Can't expand command, unable to parse segments", argument)
+    )
   else:
     some(iterator() {.closure.} =
-      calc.stack.pushValue(argument.Token)))
+      calc.stack.pushValue argument.Token))
 
 proc `$`(elem: Element): string =
   case elem.kind:
@@ -101,6 +141,7 @@ while true:
   let
     input = p.readLine()
     tokens = tokenize(input)
+  commandHistory.add tokens
   let backup = deepCopy calc
   try:
     for token in tokens:
@@ -110,10 +151,12 @@ while true:
     echo red("\nError consuming element #", e.currentCommand.elems.len + 1, ": "), e.currentCommand.elems[^1], red ", in command: ", bold e.currentCommand.name
     stdout.write red e.msg
     calc = backup
+    commandHistory.setLen commandHistory.len - 1
   except InputError as e:
     echo red("\nError with input: "), e.input
     stdout.write red e.msg
     calc = backup
+    commandHistory.setLen commandHistory.len - 1
 
   if calc.stack.len != 0:
     echo ""
