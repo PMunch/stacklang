@@ -12,10 +12,10 @@ type
     of Number:
       encoding*: Encoding
       num*: float
-  Argument = enum AString = "s", ALabel = "l", ANumber = "n", AAny = "a"
+  Argument* = enum AString = "s", ALabel = "l", ANumber = "n", AAny = "a"
   Documentation* = object
     msg*: string
-    arguments*: seq[Argument]
+    arguments*: seq[set[Argument]]
   Token* = distinct string
   Stack*[T] = seq[T]
   Calc* = ref object
@@ -23,7 +23,7 @@ type
     stack*: Stack[Element]
     awaitingCommands*: seq[Command]
     customCommands*: Table[string, seq[Element]]
-    documentation*: Table[string, OrderedTable[string, Documentation]]
+    documentation*: OrderedTable[string, OrderedTable[string, Documentation]]
     #tmpCommands*: Table[string, seq[string]]
     #variables*: Table[string, Stack[Element]]
     #randoms*: seq[string]
@@ -175,15 +175,60 @@ proc `==`*(a, b: Element): bool =
     of Number: a.num == b.num
     of String: a.str == b.str
 
-defineCommands(ArithmeticCommands, arithmeticDocumentation, runArithmetic):
+template calculate(command: untyped): untyped =
+  calc.stack.push(Element(kind: Number, num: float(command), encoding: a_encoding))
+
+defineCommands(MathCommands, mathDocumentation, runMath):
   Plus = (n, n, "+"); "Adds two numbers":
-    calc.stack.push(Element(kind: Number, num: a + b, encoding: a_encoding))
+    calculate a + b
   Minus = (n, n, "-"); "Subtract two numbers":
-    calc.stack.push(Element(kind: Number, num: a - b, encoding: a_encoding))
+    calculate a - b
   Multiply = (n, n, "*"); "Multiplies two numbers":
-    calc.stack.push(Element(kind: Number, num: a * b, encoding: a_encoding))
+    calculate a * b
   Divide = (n, n, "/"); "Divides two numbers":
-    calc.stack.push(Element(kind: Number, num: a / b, encoding: a_encoding))
+    calculate a / b
+  Sqrt = (n, "sqrt"); "Takes the square root of a number":
+    calculate sqrt(a)
+  Power = (n, n, "^"); "Takes one number and raises it to the power of another":
+    calculate b.pow(a)
+  Sine = (n, "sin"); "Takes the sine of a number":
+    calculate sin(a)
+  HyperSine = (n, "sinh"); "Takes the hyperbolic sine of a number":
+    calculate sinh(a)
+  ArcSine = (n, "arcsin"); "Takes the arc sine of a number":
+    calculate arcsin(a)
+  InvHyperSine = (n, "arcsinh"); "Takes the inverse hyperbolic sine of a number":
+    calculate arcsinh(a)
+  Cosine = (n, "cos"); "Takes the cosine of a number":
+    calculate cos(a)
+  HyperCosine = (n, "cosh"); "Takes the hyperbolic cosine of a number":
+    calculate cosh(a)
+  ArcCosine = (n, "arccos"); "Takes the arc cosine of a number":
+    calculate arccos(a)
+  InvHyperCosine = (n, "arccosh"); "Takes the inverse hyperbolic cosine of a number":
+    calculate arccosh(a)
+  Tangent = (n, "tan"); "Takes the tangent of a number":
+    calculate tan(a)
+  HyperTangent = (n, "tanh"); "Takes the hyperbolic tangent of a number":
+    calculate tanh(a)
+  ArcTangent = (n, "arctan"); "Takes the arc tangent of a number":
+    calculate arctan(a)
+  InvHyperTangent = (n, "arctanh"); "Takes the inverse hyperbolic tangent of a number":
+    calculate arctanh(a)
+  DegToRad = (n, "dtr"); "Converts a number from degrees to radians":
+    calculate degToRad(a)
+  RadToDeg = (n, "rtd"); "Converts a number from radians to degrees":
+    calculate radToDeg(a)
+  Modulo = (n, n, "mod"); "Takes the modulo of one number over another":
+    calculate a mod b
+  Binom = (n, n, "binom"); "Computes the binomial coefficient":
+    calculate binom(a.int, b.int)
+  Factorial = (n, "fac"); "Computes the factorial of a non-negative number":
+    calculate fac(a.int)
+  NatLogarithm = (n, "ln"); "Computes the natural logarithm of a number":
+    calculate ln(a)
+  Logarithm = (n, n, "log"); "Computes the logarithm of the first number to the base of the second":
+    calculate log(a, b)
 
 defineCommands(StackCommands, stackDocumentation, runStack):
   Pop = (a, "pop"); "Pops an element off the stack, discarding it":
@@ -198,6 +243,35 @@ defineCommands(StackCommands, stackDocumentation, runStack):
     calc.stack.insert a
   Len = "len"; "Puts the length of the stack on the stack":
     calc.stack.push(Element(kind: Number, num: calc.stack.len.float))
+  #StackInsert = (a, a, "insert"); "Takes an element and a number and inserts the element at that position in the stack":
+  #  let
+  #    el = calc.stack[^2]
+  #    pos = calc.stack[^1]
+  #  calc.stack.setLen(calc.stack.len - 2)
+  #  case pos.kind:
+  #  of Float:
+  #    if pos.floatVal.int >= 0:
+  #      calc.stack.insert(el, pos.floatVal.int)
+  #    else:
+  #      calc.stack.insert(el, calc.stack.len + pos.floatVal.int)
+  #  of String:
+  #    var cpos = calc.stack.high
+  #    while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
+  #      cpos -= 1
+  #    calc.stack.insert(el, cpos + 1)
+  #Delete = "delete"; "Deletes the element of the stack at a given position":
+  #  let pos = calc.stack.pop
+  #  case pos.kind:
+  #  of Float:
+  #    if pos.floatVal.int >= 0:
+  #      calc.stack.delete(pos.floatVal.int)
+  #    else:
+  #      calc.stack.delete(calc.stack.high + pos.floatVal.int + 1)
+  #  of String:
+  #    var cpos = calc.stack.high
+  #    while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
+  #      cpos -= 1
+  #    calc.stack.delete(cpos + 1)
 
 defineCommands(Commands, documentation, runCommand):
   Hex = (n, "hex"); "Converts a number to hex encoding":
@@ -206,7 +280,7 @@ defineCommands(Commands, documentation, runCommand):
     calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
   Dec = (n, "dec"); "Converts a number to decimal encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
-  Until = (a, l, "until"); "Takes a label or a length and runs the given command until the stack is that length or the label is the topmost element":
+  Until = (l|n, l, "until"); "Takes a label or a length and runs the given command until the stack is that length or the label is the topmost element":
     if not calc.isCommand(b.Token):
       var e = newException(InputError, "Label is not a command")
       e.input = b
@@ -226,7 +300,8 @@ defineCommands(Commands, documentation, runCommand):
         if calc.stack.len == 0: yield
         if calc.stack[^1] == a: break
         runIteration()
-  MakeCommand = (a, "mkcmd"); "Takes a label or a position and creates a command of everything from that position to the end of the stack":
+  MakeCommand = (n|l, "mkcmd"); "Takes a label or a position and creates a command of everything from that position to the end of the stack":
+    # TODO: fix this..
     case a.kind:
     of Label:
       var pos = calc.stack.find(a)
@@ -240,11 +315,12 @@ defineCommands(Commands, documentation, runCommand):
     #)
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
-  try:
-    discard parseEnum[Commands](cmd.string)
-    true
-  except:
-    calc.customCommands.hasKey cmd.string
+  calc.customCommands.hasKey(cmd.string) or (block:
+    for category, commands in calc.documentation:
+      for command in commands.keys:
+        if command == cmd.string:
+          return true
+    false)
 
 proc newCalc*(): Calc =
   new result
@@ -261,6 +337,6 @@ proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner, commands: 
       calc.documentation[documentationCategory][$cmd] = documentation[cmd.int]
 
 proc registerDefaults*(calc: Calc) =
-  calc.registerCommandRunner runArithmetic, ArithmeticCommands, "Arithmetic", arithmeticDocumentation
+  calc.registerCommandRunner runMath, MathCommands, "Math", mathDocumentation
   calc.registerCommandRunner runCommand, Commands, "Other", documentation
   calc.registerCommandRunner runStack, StackCommands, "Stack", stackDocumentation

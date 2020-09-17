@@ -29,7 +29,24 @@ proc presentNumber(n: Element): string =
 var
   calc = newCalc()
   commandHistory: seq[seq[Token]]
+
+proc `$`(elem: Element): string =
+  case elem.kind:
+    of Label:
+      if calc.isCommand(elem.lbl.Token):
+        if calc.customCommands.hasKey(elem.lbl):
+          italic bold elem.lbl
+        else:
+          bold elem.lbl
+      else:
+        elem.lbl
+    of Number: blue elem.presentNumber
+    of String: yellow "\"" & elem.str & "\""
+
 calc.registerDefaults()
+
+proc `$`(arguments: set[Argument]): string =
+  arguments.toSeq.mapIt($it).join("|")
 
 defineCommands(ShellCommands, shellDocumentation, runShell):
   Exit = "exit"; "Exits interactive stacklang":
@@ -50,6 +67,31 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
         help.add bold cmd, arguments, doc.msg
       help.echoTable(padding = 3)
       echo ""
+  Display = (a, "display"); "Shows the element on top off the stack without poping it":
+    stdout.write "\n" & $a
+    calc.stack.push a
+  Print = (a, "print"); "Takes a number of things or a label to go back to, then prints those things in FIFO order with space separators":
+    case a.kind:
+    of Number:
+      var pos = if a.num.int >= 0:
+        calc.stack.len - a.num.int
+      else:
+        abs(a.num.int)
+      if pos >= 0:
+        var msg = ""
+        while calc.stack.len > pos:
+          msg.insert(($calc.stack.pop) & " ")
+        stdout.write "\n" & msg
+    of Label:
+      var pos = calc.stack.high
+      while calc.stack[pos].kind != Label or calc.stack[pos].lbl != a.lbl:
+        pos -= 1
+      pos += 1
+      var msg = ""
+      while calc.stack.len > pos:
+        msg.insert(($calc.stack.pop) & " ")
+      stdout.write "\n" & msg
+    else: discard
 
 calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
 
@@ -103,19 +145,6 @@ calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator(
     some(iterator() {.closure.} =
       calc.stack.pushValue argument.Token))
 
-proc `$`(elem: Element): string =
-  case elem.kind:
-    of Label:
-      if calc.isCommand(elem.lbl.Token) or elem.lbl in ["help", "exit"]:
-        if calc.customCommands.hasKey(elem.lbl):
-          italic bold elem.lbl
-        else:
-          bold elem.lbl
-      else:
-        elem.lbl
-    of Number: blue elem.presentNumber
-    of String: yellow "\"" & elem.str & "\""
-
 proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
   for part in ($x).tokenize(withWhitespace = true):
     if part.string.isEmptyOrWhitespace == true:
@@ -123,7 +152,7 @@ proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
     else:
       result &= toRunes(case part.toElement().kind:
         of Label:
-          if calc.isCommand(part) or part.string in ["help", "exit"]:
+          if calc.isCommand(part):
             if calc.customCommands.hasKey(part.string):
               italic bold part.string
             else:
@@ -160,7 +189,7 @@ while true:
 
   if calc.stack.len != 0:
     echo ""
-    stdout.write calc.stack.map(`$`).join "  "
+    stdout.write "[ " &  calc.stack.map(`$`).join("  ") & " ]"
   echo ""
   var indicator = ""
   for awaiting in calc.awaitingCommands:
