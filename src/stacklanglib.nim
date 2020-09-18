@@ -39,6 +39,13 @@ type
     currentCommand*: Command
   CommandRunner* = proc (calc: Calc, argument: string): Option[iterator() {.closure.}]
 
+proc `$`(x: Element): string =
+  result = "Element(kind: " & $x.kind & ", "
+  case x.kind:
+  of Label: result &= "lbl: " & x.lbl
+  of String: result &= "str: " & x.str
+  of Number: result &= "num: " & $x.num & ", encoding: " & $x.encoding
+  result &= ")"
 
 template push*[T](stack: var Stack[T], value: T) =
   stack.add value
@@ -50,6 +57,12 @@ template pop*(calc: Calc): Element =
     calc.awaitingCommands[^1].elems.add calc.stack[^1]
     calc.stack.setLen calc.stack.len - 1
     calc.awaitingCommands[^1].elems[^1]
+
+template peek*(calc: Calc): Element =
+  block:
+    if calc.stack.len == 0:
+      yield
+    calc.stack[^1]
 
 proc pushNumber*(stack: var Stack[Element], x: float) =
   stack.push Element(kind: Number, num: x)
@@ -301,13 +314,12 @@ defineCommands(Commands, documentation, runCommand):
         if calc.stack[^1] == a: break
         runIteration()
   MakeCommand = (n|l, "mkcmd"); "Takes a label or a position and creates a command of everything from that position to the end of the stack":
-    # TODO: fix this..
     case a.kind:
     of Label:
-      var pos = calc.stack.find(a)
-      if pos != -1:
-        calc.customCommands[a.lbl] = calc.stack[pos+1 .. ^1]
-        calc.stack.setLen(pos+1)
+      var newCmd: seq[Element]
+      while calc.peek.kind != Label or calc.peek.lbl != a.lbl:
+        newCmd.add calc.pop()
+      calc.customCommands[a.lbl] = newCmd
     else: discard
   Call = (l, "call"); "Calls the given label as a command":
     calc.evaluateToken(a.Token) #iterator() {.closure.} =

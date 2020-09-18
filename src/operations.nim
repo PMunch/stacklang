@@ -42,7 +42,7 @@ macro defineCommands*(enumName, docarrayName, runnerName,
       templateArgument)
     parsedEnum = newIdentNode("parsedEnum")
     caseSwitch =  nnkCaseStmt.newTree(parsedEnum)
-    cmd = newIdentNode("cmd")
+    cmd = newIdentNode("result")
   for i in countup(0, definitions.len - 1, 2):
     let
       enumInfo = definitions[i]
@@ -116,14 +116,14 @@ macro defineCommands*(enumName, docarrayName, runnerName,
     `enumDef`
     `docstrings`
     proc `runnerName`*(`calc`: Calc, `templateArgument`: string): Option[iterator() {.closure.}] =
-      var `cmd`: Option[iterator() {.closure.}]
-      block runnerBody:
-        var `parsedEnum`: `enumName`
-        try:
-          `parsedEnum` = `parseStmt`
-        except:
-          break runnerBody
-        `caseSwitch`
-      `cmd`
+      #var `cmd`: Option[iterator() {.closure.}]
+      #block runnerBody:
+      var `parsedEnum`: `enumName`
+      try:
+        `parsedEnum` = `parseStmt`
+      except:
+        return
+      `caseSwitch`
+      #`cmd`
   when defined(echoOperations):
     echo result.repr
