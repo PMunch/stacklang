@@ -24,7 +24,20 @@ proc presentNumber(n: Element): string =
   of Hexadecimal:
     "0x" & n.num.int.toHex.strip(trailing = false, chars = {'0'})
   of Binary:
-    "0b" & n.num.int.toBin(64).strip(trailing = false, chars = {'0'})
+    #"0b" & n.num.int.toBin(64).strip(trailing = false, chars = {'0'})
+    # All binary numbers are presented in groups of 8 with _ separators
+    var
+      str = n.num.int.toBin(64)
+      first = str[0]
+    if first == '0':
+      str = str.strip(trailing = false, chars = {'0'})
+    else:
+      str = str.strip(trailing = false, chars = {'1'})
+    str = str.align(((str.len + 8) div 8) * 8, first)
+    var retstr = "0b"
+    for i in countup(0, str.len - 1, 8):
+      retstr &= str[i .. i+7] & "_"
+    retstr[0..^2]
 
 var
   calc = newCalc()
@@ -56,7 +69,6 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     stdout.write "\n"
     for category in calc.documentation.keys:
       var help: TerminalTable
-      echo category & " commands:"
       for cmd, doc in calc.documentation[category]:
         var arguments: string
         for i, argument in doc.arguments:
@@ -64,8 +76,13 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
             (if i == 0: "" else: "") &
             $argument &
             (if i == doc.arguments.high: "" else: ", ")
-        help.add bold cmd, arguments, doc.msg
-      help.echoTable(padding = 3)
+        if category == "Custom":
+          help.add bold cmd, doc.msg, calc.customCommands[cmd].map(`$`).join("  ")
+        else:
+          help.add bold cmd, arguments, doc.msg
+      if help.rows > 0:
+        echo category & " commands:"
+        help.echoTable(padding = 3)
       echo ""
   Display = (a, "display"); "Shows the element on top off the stack without poping it":
     stdout.write "\n" & $a

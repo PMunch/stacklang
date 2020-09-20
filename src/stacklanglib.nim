@@ -285,6 +285,19 @@ defineCommands(StackCommands, stackDocumentation, runStack):
   #    while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
   #      cpos -= 1
   #    calc.stack.delete(cpos + 1)
+defineCommands(BitCommands, bitDocumentation, runBits):
+  And = (n, n, "and"); "Runs a binary and operation on two numbers":
+    calculate a.int and b.int
+  Or = (n, n, "or"); "Runs a binary or operation on two numbers":
+    calculate a.int or b.int
+  Not = (n, "not"); "Runs a binary not operation on two numbers":
+    calculate not a.int
+  ShiftLeft = (n, n, "shl"); "Shift a number left by the given amount":
+    calculate a.int shl b.int
+  ShiftRight = (n, n, "shr"); "Shift a number right by the given amount":
+    calculate a.int shr b.int
+  Truncate (n, n, "trunc"); "Truncates a binary number":
+    calculate a.int and ((0b1 shl b.int) - 1)
 
 defineCommands(Commands, documentation, runCommand):
   Hex = (n, "hex"); "Converts a number to hex encoding":
@@ -318,13 +331,18 @@ defineCommands(Commands, documentation, runCommand):
     of Label:
       var newCmd: seq[Element]
       while calc.peek.kind != Label or calc.peek.lbl != a.lbl:
-        newCmd.add calc.pop()
+        newCmd.insert calc.pop()
       calc.customCommands[a.lbl] = newCmd
-    else: discard
+      calc.documentation["Custom"][a.lbl] = Documentation(msg: "", arguments: @[])
+    else:
+      # TODO: Implement this, decide on labels and such
+      discard
+  DeleteCommand = (l, "delcmd"); "Takes a label and deletes the custom command by that name":
+    calc.customCommands.del a
+  DocumentCommand = (s, l, "doccmd"); "Takes a string and a label and documents the command by that name":
+      calc.documentation["Custom"][b].msg = a
   Call = (l, "call"); "Calls the given label as a command":
-    calc.evaluateToken(a.Token) #iterator() {.closure.} =
-    #  discard # Should be an error
-    #)
+    calc.evaluateToken(a.Token)
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
   calc.customCommands.hasKey(cmd.string) or (block:
@@ -336,19 +354,21 @@ proc isCommand*(calc: Calc, cmd: Token): bool =
 
 proc newCalc*(): Calc =
   new result
+  result.documentation["Custom"] = initOrderedTable[string, Documentation]()
 
 proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner) =
   calc.commandRunners.add commandRunner
 
 proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner, commands: typedesc[enum], documentationCategory: string, documentation: openArray[Documentation]) =
+  assert not calc.documentation.hasKey documentationCategory, "Category " & documentationCategory & " is already registered"
   calc.commandRunners.add commandRunner
   if documentation.len != 0:
-    if not calc.documentation.hasKey documentationCategory:
-      calc.documentation[documentationCategory] = initOrderedTable[string, Documentation]()
+    calc.documentation[documentationCategory] = initOrderedTable[string, Documentation]()
     for cmd in commands:
       calc.documentation[documentationCategory][$cmd] = documentation[cmd.int]
 
 proc registerDefaults*(calc: Calc) =
   calc.registerCommandRunner runMath, MathCommands, "Math", mathDocumentation
+  calc.registerCommandRunner runBits, BitCommands, "Bitwise", bitDocumentation
   calc.registerCommandRunner runCommand, Commands, "Other", documentation
   calc.registerCommandRunner runStack, StackCommands, "Stack", stackDocumentation
