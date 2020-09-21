@@ -334,9 +334,23 @@ defineCommands(Commands, documentation, runCommand):
         newCmd.insert calc.pop()
       calc.customCommands[a.lbl] = newCmd
       calc.documentation["Custom"][a.lbl] = Documentation(msg: "", arguments: @[])
-    else:
-      # TODO: Implement this, decide on labels and such
-      discard
+    of Number:
+      var
+        newCmd: seq[Element]
+        newPos = a.num.int
+      if newPos < 0:
+        newPos += calc.stack.len
+      if calc.stack.high < newPos or newPos < 0:
+        var e = newException(InputError, "Can't expand command, not enough commands")
+        e.input = $a
+        raise e
+      while calc.stack.len != newPos:
+        newCmd.insert calc.pop()
+      # TODO: Implement this, decide on randoms
+      calc.customCommands["tmp"] = newCmd
+      calc.documentation["Custom"]["tmp"] = Documentation(msg: "", arguments: @[])
+      calc.stack.pushValue "tmp".Token
+    else: discard
   DeleteCommand = (l, "delcmd"); "Takes a label and deletes the custom command by that name":
     calc.customCommands.del a
   DocumentCommand = (s, l, "doccmd"); "Takes a string and a label and documents the command by that name":
