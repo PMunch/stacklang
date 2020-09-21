@@ -134,7 +134,7 @@ calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator(
       try:
         var
           parts = argument[1..^1].split(':')
-          pos = parseInt(parts[0])
+          pos = if parts[0] == "!": -1 else: parseInt(parts[0])
         if commandHistory.high == pos and parts.len == 1:
           raiseInputError("Can't expand current command", argument)
         if pos < 0:
@@ -159,7 +159,7 @@ calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator(
           of 2:
             let
               start = parseInt(subrange[0])
-              stop = parseInt(subrange[1])
+              stop = if subrange[1].len > 0: parseInt(subrange[1]) else: commandHistory[pos].high
             if stop < start or commandHistory[pos].high < start or commandHistory[pos].high > stop:
               raiseInputError("Can't expand command, no such sub-command", argument)
             commandHistory[^1] = @[]
