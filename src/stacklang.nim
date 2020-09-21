@@ -34,10 +34,13 @@ proc presentNumber(n: Element): string =
     else:
       str = str.strip(trailing = false, chars = {'1'})
     str = str.align(((str.len + 8) div 8) * 8, first)
-    var retstr = "0b"
+    var retstr = ""
     for i in countup(0, str.len - 1, 8):
       retstr &= str[i .. i+7] & "_"
-    retstr[0..^2]
+    if retstr.len == 9 and n.num.int in 0..<16:
+      "0b" & retstr[4..^2]
+    else:
+      "0b" & retstr[0..^2]
 
 var
   calc = newCalc()
@@ -56,6 +59,9 @@ proc `$`(elem: Element): string =
     of Number: blue elem.presentNumber
     of String: yellow "\"" & elem.str & "\""
 
+proc `$`(command: seq[Token]): string =
+  command.mapIt(it.string).join("  ")
+
 calc.registerDefaults()
 
 proc `$`(arguments: set[Argument]): string =
@@ -65,6 +71,10 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
   Exit = "exit"; "Exits interactive stacklang":
     echo ""
     quit 0
+  History = "history"; "Prints out the entire command history so far":
+    echo ""
+    for i, command in commandHistory[0..^2]:
+      stdout.write i, ": ", command, (if i != commandHistory.len - 2: "\n" else: "")
   Help = "help"; "Prints out all documentation":
     stdout.write "\n"
     for category in calc.documentation.keys:
@@ -133,8 +143,10 @@ calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator(
           raiseInputError("Can't expand command, not enough commands", argument)
         case parts.len:
         of 1:
+          commandHistory[^1] = @[]
           for token in commandHistory[pos]:
             calc.evaluateToken token
+            commandHistory[^1].add token
         of 2:
           let subrange = parts[1].split('-')
           case subrange.len:
@@ -143,14 +155,17 @@ calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator(
             if commandHistory[pos].high < sub:
               raiseInputError("Can't expand command, no such sub-command", argument)
             calc.evaluateToken commandHistory[pos][sub]
+            commandHistory[^1] = @[commandHistory[pos][sub]]
           of 2:
             let
               start = parseInt(subrange[0])
               stop = parseInt(subrange[1])
             if stop < start or commandHistory[pos].high < start or commandHistory[pos].high > stop:
               raiseInputError("Can't expand command, no such sub-command", argument)
+            commandHistory[^1] = @[]
             for i in start..stop:
               calc.evaluateToken commandHistory[pos][i]
+              commandHistory[^1].add commandHistory[pos][i]
           else:
             raiseInputError("Can't expand command, unable to parse segments", argument)
         else:
