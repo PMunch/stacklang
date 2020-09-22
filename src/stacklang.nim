@@ -67,6 +67,19 @@ calc.registerDefaults()
 proc `$`(arguments: set[Argument]): string =
   arguments.toSeq.mapIt($it).join("|")
 
+iterator documentationLines(category: string): tuple[name: string, line: seq[string]] =
+  for cmd, doc in calc.documentation[category]:
+    var arguments: string
+    for i, argument in doc.arguments:
+      arguments &=
+        (if i == 0: "" else: "") &
+        $argument &
+        (if i == doc.arguments.high: "" else: ", ")
+    if category == "Custom":
+      yield (cmd, @[bold cmd, doc.msg, calc.customCommands[cmd].map(`$`).join("  ")])
+    else:
+      yield (cmd, @[bold cmd, arguments, doc.msg])
+
 defineCommands(ShellCommands, shellDocumentation, runShell):
   Exit = "exit"; "Exits interactive stacklang":
     echo ""
@@ -76,24 +89,34 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     for i, command in commandHistory[0..^2]:
       stdout.write i, ": ", command, (if i != commandHistory.len - 2: "\n" else: "")
   Help = "help"; "Prints out all documentation":
-    stdout.write "\n"
+    var customTable: TerminalTable
     for category in calc.documentation.keys:
       var help: TerminalTable
-      for cmd, doc in calc.documentation[category]:
-        var arguments: string
-        for i, argument in doc.arguments:
-          arguments &=
-            (if i == 0: "" else: "") &
-            $argument &
-            (if i == doc.arguments.high: "" else: ", ")
-        if category == "Custom":
-          help.add bold cmd, doc.msg, calc.customCommands[cmd].map(`$`).join("  ")
-        else:
-          help.add bold cmd, arguments, doc.msg
-      if help.rows > 0:
+      for _, line in documentationLines(category):
+        help.add line
+      if category == "Custom":
+        customTable = help
+      elif help.rows > 0:
         echo category & " commands:"
         help.echoTable(padding = 3)
       echo ""
+    if customTable.rows > 0:
+      echo "Custom commands:"
+      customTable.echoTable(padding = 3)
+  Explain = (l, "explain"); "Prints out the documentation for a single command or category":
+    stdout.write "\n"
+    let padding = ' '.repeat(3)
+    for category in calc.documentation.keys:
+      for name, line in documentationLines(category):
+        if name == a:
+          stdout.write line.join padding
+    for category in calc.documentation.keys:
+      if category == a:
+        var help: TerminalTable
+        for _, line in documentationLines(category):
+          help.add line
+        if help.rows > 0:
+          help.echoTable(padding = 3)
   Display = (a, "display"); "Shows the element on top off the stack without poping it":
     stdout.write "\n" & $a
     calc.stack.push a
@@ -209,7 +232,7 @@ while true:
       calc.evaluateToken(token)
     calc.execute()
   except ArgumentError as e:
-    echo red("\nError consuming element #", e.currentCommand.elems.len + 1, ": "), e.currentCommand.elems[^1], red ", in command: ", bold e.currentCommand.name
+    echo red("\nError consuming element #", e.currentCommand.elems.len, ": "), e.currentCommand.elems[^1], red ", in command: ", bold e.currentCommand.name
     stdout.write red e.msg
     calc = backup
     commandHistory.setLen commandHistory.len - 1

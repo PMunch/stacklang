@@ -337,14 +337,19 @@ defineCommands(Commands, documentation, runCommand):
     of Number:
       var
         newCmd: seq[Element]
-        newPos = a.num.int
-      if newPos < 0:
-        newPos += calc.stack.len
-      if calc.stack.high < newPos or newPos < 0:
-        var e = newException(InputError, "Can't expand command, not enough commands")
-        e.input = $a
+        commandLen = a.num.int
+      if commandLen >= 0:
+        commandLen = calc.stack.len - commandLen
+      else:
+        commandLen = abs(commandLen)
+      if commandLen <= 0:
+        var e = newException(ArgumentError, [
+          "Can't create empty command",
+          "Current stack position is lower than requested stopping point"
+          ][commandLen.abs.min(1)])
+        e.currentCommand = calc.awaitingCommands[^1]
         raise e
-      while calc.stack.len != newPos:
+      while newCmd.len != commandLen:
         newCmd.insert calc.pop()
       # TODO: Implement this, decide on randoms
       calc.customCommands["tmp"] = newCmd
@@ -352,11 +357,18 @@ defineCommands(Commands, documentation, runCommand):
       calc.stack.pushValue "tmp".Token
     else: discard
   DeleteCommand = (l, "delcmd"); "Takes a label and deletes the custom command by that name":
+    calc.documentation["Custom"].del a
     calc.customCommands.del a
   DocumentCommand = (s, l, "doccmd"); "Takes a string and a label and documents the command by that name":
       calc.documentation["Custom"][b].msg = a
   Call = (l, "call"); "Calls the given label as a command":
     calc.evaluateToken(a.Token)
+  ExpandCommand = (l, "excmd"); "Expands the given command onto the stack":
+    for elem in calc.customCommands[a]:
+      calc.stack.push elem
+  DropWaiting = "dropwait"; "Drops the last command waiting for input":
+    calc.awaitingCommands[^2] = calc.awaitingCommands[^1]
+    calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
   calc.customCommands.hasKey(cmd.string) or (block:
