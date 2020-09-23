@@ -191,6 +191,31 @@ proc `==`*(a, b: Element): bool =
 template calculate(command: untyped): untyped =
   calc.stack.push(Element(kind: Number, num: float(command), encoding: a_encoding))
 
+template untilPosition(a: Element, action: untyped): untyped =
+  case a.kind:
+  of Label:
+    while calc.peek.kind != Label or calc.peek.lbl != a.lbl:
+      action
+  of Number:
+    var
+      consumeLen = a.num.int
+      consumed = 0
+    if consumeLen >= 0:
+      consumeLen = calc.stack.len - consumeLen
+    else:
+      consumeLen = abs(consumeLen)
+    if consumeLen <= 0:
+      var e = newException(ArgumentError, [
+        "Can't run with no arguments",
+        "Current stack position is lower than requested stopping point"
+        ][consumeLen.abs.min(1)])
+      e.currentCommand = calc.awaitingCommands[^1]
+      raise e
+    while consumed != consumeLen:
+      action
+      consumed += 1
+  else: discard
+
 defineCommands(MathCommands, mathDocumentation, runMath):
   Plus = (n, n, "+"); "Adds two numbers":
     calculate a + b
@@ -256,35 +281,19 @@ defineCommands(StackCommands, stackDocumentation, runStack):
     calc.stack.insert a
   Len = "len"; "Puts the length of the stack on the stack":
     calc.stack.push(Element(kind: Number, num: calc.stack.len.float))
-  #StackInsert = (a, a, "insert"); "Takes an element and a number and inserts the element at that position in the stack":
-  #  let
-  #    el = calc.stack[^2]
-  #    pos = calc.stack[^1]
-  #  calc.stack.setLen(calc.stack.len - 2)
-  #  case pos.kind:
-  #  of Float:
-  #    if pos.floatVal.int >= 0:
-  #      calc.stack.insert(el, pos.floatVal.int)
-  #    else:
-  #      calc.stack.insert(el, calc.stack.len + pos.floatVal.int)
-  #  of String:
-  #    var cpos = calc.stack.high
-  #    while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
-  #      cpos -= 1
-  #    calc.stack.insert(el, cpos + 1)
-  #Delete = "delete"; "Deletes the element of the stack at a given position":
-  #  let pos = calc.stack.pop
-  #  case pos.kind:
-  #  of Float:
-  #    if pos.floatVal.int >= 0:
-  #      calc.stack.delete(pos.floatVal.int)
-  #    else:
-  #      calc.stack.delete(calc.stack.high + pos.floatVal.int + 1)
-  #  of String:
-  #    var cpos = calc.stack.high
-  #    while calc.stack[cpos].kind != String or calc.stack[cpos].strVal != pos.strVal:
-  #      cpos -= 1
-  #    calc.stack.delete(cpos + 1)
+  StackInsert = (a, n|l, "insert"); "Takes an element and a position and inserts the element before that position in the stack":
+    # This is a weird way of doing this which doesn't really work with waiting commands
+    var tail: seq[Element]
+    untilPosition(b):
+      tail.insert calc.pop()
+    calc.stack.push a
+    calc.stack &= tail[0..^1]
+  Delete = (n|l, "delete"); "Deletes the element of the stack at a given position":
+    var tail: seq[Element]
+    untilPosition(a):
+      tail.insert calc.pop()
+    calc.stack &= tail[1..^1]
+
 defineCommands(BitCommands, bitDocumentation, runBits):
   And = (n, n, "and"); "Runs a binary and operation on two numbers":
     calculate a.int and b.int
@@ -306,7 +315,7 @@ defineCommands(Commands, documentation, runCommand):
     calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
   Dec = (n, "dec"); "Converts a number to decimal encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
-  Until = (l|n, l, "until"); "Takes a label or a length and runs the given command until the stack is that length or the label is the topmost element":
+  Until = (l|n, l, "until"); "Takes a label or a length and runs the given command until the stack is that length or the label is the topmost element. If the label is parseable as a number it can also be used to run until a number is on top":
     if not calc.isCommand(b.Token):
       var e = newException(InputError, "Label is not a command")
       e.input = b
@@ -321,36 +330,23 @@ defineCommands(Commands, documentation, runCommand):
     of Number:
       while calc.stack.len.float != a.num:
         runIteration()
-    of Label, String:
+    of Label:
+      let numeral = try: (num: parseFloat(a.lbl), i: true) except: (num: 0.0, i: false)
       while true:
         if calc.stack.len == 0: yield
         if calc.stack[^1] == a: break
+        if numeral.i and calc.stack[^1].kind == Number and calc.stack[^1].num == numeral.num: break
         runIteration()
+    else: discard
   MakeCommand = (n|l, "mkcmd"); "Takes a label or a position and creates a command of everything from that position to the end of the stack":
+    var newCmd: seq[Element]
+    untilPosition(a):
+      newCmd.insert calc.pop()
     case a.kind:
     of Label:
-      var newCmd: seq[Element]
-      while calc.peek.kind != Label or calc.peek.lbl != a.lbl:
-        newCmd.insert calc.pop()
       calc.customCommands[a.lbl] = newCmd
       calc.documentation["Custom"][a.lbl] = Documentation(msg: "", arguments: @[])
     of Number:
-      var
-        newCmd: seq[Element]
-        commandLen = a.num.int
-      if commandLen >= 0:
-        commandLen = calc.stack.len - commandLen
-      else:
-        commandLen = abs(commandLen)
-      if commandLen <= 0:
-        var e = newException(ArgumentError, [
-          "Can't create empty command",
-          "Current stack position is lower than requested stopping point"
-          ][commandLen.abs.min(1)])
-        e.currentCommand = calc.awaitingCommands[^1]
-        raise e
-      while newCmd.len != commandLen:
-        newCmd.insert calc.pop()
       # TODO: Implement this, decide on randoms
       calc.customCommands["tmp"] = newCmd
       calc.documentation["Custom"]["tmp"] = Documentation(msg: "", arguments: @[])
