@@ -4,6 +4,17 @@ import strutils except tokenize
 import sequtils, math, tables, options
 import nancy
 
+proc intersperse(str: string, every: int, sep = '_'): string =
+  var s = str
+  if str[0] == '-':
+    s = str[1..^1]
+  result = s[0..min(s.high, s.high mod (every - 1))] & "_"
+  for i in countup(s.high mod (every - 1) + 1, s.len - 1, every - 1):
+    result &= s[i ..< i+(every-1)] & "_"
+  result.setLen result.high
+  if str[0] == '-':
+    result.insert "-"
+
 proc presentNumber(n: Element): string =
   case n.encoding:
   of Decimal:
@@ -12,7 +23,7 @@ proc presentNumber(n: Element): string =
     of fcNormal:
       let split = x.splitDecimal
       if split.floatpart.classify in [fcZero, fcNegZero]:
-        $split.intpart.int
+        ($split.intpart.int).intersperse(4)
       else:
         x.formatFloat(ffDecimal, precision = 32).strip(leading = false, chars = {'0'})
     of fcSubnormal: x.formatFloat(ffScientific)
@@ -22,25 +33,24 @@ proc presentNumber(n: Element): string =
     of fcInf: "inf"
     of fcNegInf: "-inf"
   of Hexadecimal:
-    "0x" & n.num.int.toHex.strip(trailing = false, chars = {'0'})
+    var
+      str = n.num.int.toHex
+      first = str[0]
+    str = str.strip(trailing = false, chars = {first})
+    str = str.align(((str.len + 1) div 2) * 2, first)
+    str = str.intersperse(3)
+    "0x" & str
   of Binary:
-    #"0b" & n.num.int.toBin(64).strip(trailing = false, chars = {'0'})
-    # All binary numbers are presented in groups of 8 with _ separators
     var
       str = n.num.int.toBin(64)
       first = str[0]
-    if first == '0':
-      str = str.strip(trailing = false, chars = {'0'})
-    else:
-      str = str.strip(trailing = false, chars = {'1'})
+    str = str.strip(trailing = false, chars = {first})
     str = str.align(((str.len + 8) div 8) * 8, first)
-    var retstr = ""
-    for i in countup(0, str.len - 1, 8):
-      retstr &= str[i .. i+7] & "_"
-    if retstr.len == 9 and n.num.int in 0..<16:
-      "0b" & retstr[4..^2]
+    str = str.intersperse(9)
+    if str.len == 8 and n.num.int in 0..<16:
+      "0b" & str[4..^1]
     else:
-      "0b" & retstr[0..^2]
+      "0b" & str[0..^1]
 
 var
   calc = newCalc()
