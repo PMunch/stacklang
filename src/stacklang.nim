@@ -60,7 +60,8 @@ proc `$`(elem: Element): string =
   case elem.kind:
     of Label:
       if calc.isCommand(elem.lbl.Token):
-        if calc.customCommands.hasKey(elem.lbl):
+        if calc.customCommands.hasKey(elem.lbl) or
+          calc.tmpCommands.hasKey(elem.lbl):
           italic bold elem.lbl
         else:
           bold elem.lbl
@@ -90,6 +91,11 @@ iterator documentationLines(category: string): tuple[name: string, line: seq[str
     else:
       yield (cmd, @[bold cmd, arguments, doc.msg])
 
+template raiseInputError(msg, argument: string): untyped =
+  var e = newException(InputError, msg)
+  e.input = argument
+  raise e
+
 defineCommands(ShellCommands, shellDocumentation, runShell):
   Exit = "exit"; "Exits interactive stacklang":
     echo ""
@@ -114,19 +120,24 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
       echo "Custom commands:"
       customTable.echoTable(padding = 3)
   Explain = (l, "explain"); "Prints out the documentation for a single command or category":
-    stdout.write "\n"
-    let padding = ' '.repeat(3)
-    for category in calc.documentation.keys:
-      for name, line in documentationLines(category):
-        if name == a:
-          stdout.write line.join padding
-    for category in calc.documentation.keys:
-      if category == a:
-        var help: TerminalTable
-        for _, line in documentationLines(category):
-          help.add line
-        if help.rows > 0:
-          help.echoTable(padding = 3)
+    if calc.isCommand a.Token:
+      stdout.write "\n"
+      let padding = ' '.repeat(3)
+      for category in calc.documentation.keys:
+        for name, line in documentationLines(category):
+          if name == a:
+            stdout.write line.join padding
+    elif calc.documentation.hasKey a:
+      stdout.write "\n"
+      for category in calc.documentation.keys:
+        if category == a:
+          var help: TerminalTable
+          for _, line in documentationLines(category):
+            help.add line
+          if help.rows > 0:
+            help.echoTable(padding = 3)
+    else:
+      raiseInputError("No such command or category", a)
   Display = (a, "display"); "Shows the element on top off the stack without poping it":
     stdout.write "\n" & $a
     calc.stack.push a
@@ -155,11 +166,6 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
 
 calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
 
-
-template raiseInputError(msg, argument: string): untyped =
-  var e = newException(InputError, msg)
-  e.input = argument
-  raise e
 
 calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator() {.closure.}] =
   if argument[0] == '!':
@@ -218,7 +224,8 @@ proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
       result &= toRunes(case part.toElement().kind:
         of Label:
           if calc.isCommand(part):
-            if calc.customCommands.hasKey(part.string):
+            if calc.customCommands.hasKey(part.string) or
+              calc.tmpCommands.hasKey(part.string):
               italic bold part.string
             else:
               bold part.string

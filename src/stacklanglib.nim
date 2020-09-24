@@ -1,4 +1,4 @@
-import math, strutils, npeg, tables, hashes, options
+import math, strutils, npeg, tables, hashes, options, random
 
 type
   ElementKind* = enum String, Label, Number
@@ -24,7 +24,7 @@ type
     awaitingCommands*: seq[Command]
     customCommands*: Table[string, seq[Element]]
     documentation*: OrderedTable[string, OrderedTable[string, Documentation]]
-    #tmpCommands*: Table[string, seq[string]]
+    tmpCommands*: Table[string, seq[Element]]
     #variables*: Table[string, Stack[Element]]
     #randoms*: seq[string]
     #messages: seq[seq[Message]]
@@ -38,6 +38,11 @@ type
   ArgumentError* = object of StackLangError
     currentCommand*: Command
   CommandRunner* = proc (calc: Calc, argument: string): Option[iterator() {.closure.}]
+
+template raiseInputError(msg, argument: string): untyped =
+  var e = newException(InputError, msg)
+  e.input = argument
+  raise e
 
 proc `$`(x: Element): string =
   result = "Element(kind: " & $x.kind & ", "
@@ -130,15 +135,20 @@ template stepCommand*(command: Command) =
 proc runCommand*(calc: Calc, command: string): Option[iterator() {.closure.}]
 
 proc evaluateToken*(calc: Calc, token: Token) =
+  template doTok() =
+    case element.kind:
+    of Number, String: calc.stack.add element
+    of Label:
+      if element.lbl[0] != '\\':
+        calc.evaluateToken(Token(element.lbl))
+      else:
+        calc.stack.add Token(element.lbl[1..^1]).toElement
   if calc.customCommands.hasKey(token.string):
     for element in calc.customCommands[token.string]:
-      case element.kind:
-      of Number, String: calc.stack.add element
-      of Label:
-        if element.lbl[0] != '\\':
-          calc.evaluateToken(Token(element.lbl))
-        else:
-          calc.stack.add Token(element.lbl[1..^1]).toElement
+      doTok()
+  elif calc.tmpCommands.hasKey(token.string):
+    for element in calc.tmpCommands[token.string]:
+      doTok()
   else:
     calc.awaitingCommands.add new Command
     calc.awaitingCommands[^1].name = token.string
@@ -315,6 +325,8 @@ defineCommands(Commands, documentation, runCommand):
     calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
   Dec = (n, "dec"); "Converts a number to decimal encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
+  Nop = "nop"; "Does nothing":
+    discard
   Until = (l|n, l, "until"); "Takes a label or a length and runs the given command until the stack is that length or the label is the topmost element. If the label is parseable as a number it can also be used to run until a number is on top":
     if not calc.isCommand(b.Token):
       var e = newException(InputError, "Label is not a command")
@@ -347,27 +359,53 @@ defineCommands(Commands, documentation, runCommand):
       calc.customCommands[a.lbl] = newCmd
       calc.documentation["Custom"][a.lbl] = Documentation(msg: "", arguments: @[])
     of Number:
-      # TODO: Implement this, decide on randoms
-      calc.customCommands["tmp"] = newCmd
-      calc.documentation["Custom"]["tmp"] = Documentation(msg: "", arguments: @[])
-      calc.stack.pushValue "tmp".Token
+      var name = "tmp" & align($rand(9999), 4, '0')
+      while calc.customCommands.hasKey name:
+        name = "tmp" & align($rand(9999), 4, '0')
+      calc.tmpCommands[name] = newCmd
+      calc.stack.pushValue name.Token
     else: discard
   DeleteCommand = (l, "delcmd"); "Takes a label and deletes the custom command by that name":
-    calc.documentation["Custom"].del a
-    calc.customCommands.del a
+    if calc.customCommands.hasKey a:
+      calc.documentation["Custom"].del a
+      calc.customCommands.del a
+    else:
+      raiseInputError("No such command", a)
+  NameCommand = (l, l, "name"); "Takes a label of a command and a label, names (or renames) the command to the label":
+    if calc.tmpCommands.hasKey(a):
+      calc.customCommands[b] = calc.tmpCommands[a]
+      calc.documentation["Custom"][b] = Documentation(msg: "", arguments: @[])
+      calc.tmpCommands.del a
+    elif calc.customCommands.hasKey(a):
+      calc.customCommands[b] = calc.customCommands[a]
+      calc.customCommands.del a
+    else:
+      raiseInputError("No such command", a)
   DocumentCommand = (s, l, "doccmd"); "Takes a string and a label and documents the command by that name":
+    if calc.customCommands.hasKey b:
       calc.documentation["Custom"][b].msg = a
+    else:
+      raiseInputError("No such command", b)
   Call = (l, "call"); "Calls the given label as a command":
-    calc.evaluateToken(a.Token)
+    if calc.isCommand a.Token:
+      calc.evaluateToken(a.Token)
+    else:
+      raiseInputError("No such command", a)
   ExpandCommand = (l, "excmd"); "Expands the given command onto the stack":
-    for elem in calc.customCommands[a]:
-      calc.stack.push elem
+    if calc.customCommands.hasKey(a) or calc.tmpCommands.hasKey(a):
+      for elem in calc.customCommands[a]:
+        calc.stack.push elem
+      for elem in calc.tmpCommands[a]:
+        calc.stack.push elem
+    else:
+      raiseInputError("No such command", a)
   DropWaiting = "dropwait"; "Drops the last command waiting for input":
     calc.awaitingCommands[^2] = calc.awaitingCommands[^1]
     calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
-  calc.customCommands.hasKey(cmd.string) or (block:
+  calc.customCommands.hasKey(cmd.string) or
+  calc.tmpCommands.hasKey(cmd.string) or (block:
     for category, commands in calc.documentation:
       for command in commands.keys:
         if command == cmd.string:
