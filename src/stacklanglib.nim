@@ -360,7 +360,7 @@ defineCommands(Commands, documentation, runCommand):
       calc.documentation["Custom"][a.lbl] = Documentation(msg: "", arguments: @[])
     of Number:
       var name = "tmp" & align($rand(9999), 4, '0')
-      while calc.customCommands.hasKey name:
+      while calc.customCommands.hasKey(name) or calc.tmpCommands.hasKey(name):
         name = "tmp" & align($rand(9999), 4, '0')
       calc.tmpCommands[name] = newCmd
       calc.stack.pushValue name.Token
