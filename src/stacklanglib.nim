@@ -115,9 +115,8 @@ proc toElement*(value: Token): Element =
           else:
             Element(kind: Number, num: parseBinInt(value.string).float, encoding: Binary)
         else:
-          var e = newException(InputError, "Unknown encoding")
-          e.input = value.string
-          raise e
+          value.string.labelVerify
+          Element(kind: Label, lbl: value.string)
 
       else:
         value.string.labelVerify
@@ -238,7 +237,7 @@ defineCommands(MathCommands, mathDocumentation, runMath):
   Sqrt = (n, "sqrt"); "Takes the square root of a number":
     calculate sqrt(a)
   Power = (n, n, "^"); "Takes one number and raises it to the power of another":
-    calculate b.pow(a)
+    calculate a.pow(b)
   Sine = (n, "sin"); "Takes the sine of a number":
     calculate sin(a)
   HyperSine = (n, "sinh"); "Takes the hyperbolic sine of a number":
