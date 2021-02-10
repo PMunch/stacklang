@@ -1,4 +1,4 @@
-import math, strutils, npeg, tables, hashes, options, random
+import math, strutils, npeg, tables, hashes, options, random, sequtils
 
 type
   ElementKind* = enum String, Label, Number
@@ -25,9 +25,8 @@ type
     customCommands*: Table[string, seq[Element]]
     documentation*: OrderedTable[string, OrderedTable[string, Documentation]]
     tmpCommands*: Table[string, seq[Element]]
-    #variables*: Table[string, Stack[Element]]
+    variables*: Table[string, Stack[Element]]
     #randoms*: seq[string]
-    #messages: seq[seq[Message]]
   Command* = ref object
     name*: string
     exec*: iterator()
@@ -303,6 +302,33 @@ defineCommands(StackCommands, stackDocumentation, runStack):
       tail.insert calc.pop()
     calc.stack &= tail[1..^1]
 
+defineCommands(VariableCommands, variableDocumentation, runVariable):
+  VariablePush = (a, l, "varpush"); "Takes an element and a label and pushes the element to the stack named by the label":
+    calc.variables.mgetOrPut(b, @[]).add a
+  VariablePop = (l, "varpop"); "Takes a label and pops an element of the stack named by that label":
+    if not calc.variables.hasKey(a):
+      raise newException(ValueError, "No variable named " & a)
+    else:
+      calc.stack.push calc.variables[a].pop
+      if calc.variables[a].len == 0:
+        calc.variables.del a
+  VariableMerge = (l, "varmrg"); "Takes a label and puts all elements of that variable onto the current stack, deleting the variable":
+    if not calc.variables.hasKey(a):
+      raise newException(ValueError, "No variable named " & a)
+    else:
+      calc.stack = calc.stack.concat calc.variables[a]
+      calc.variables.del a
+  VariableSwap = (l, "varswp"); "Takes a label and swaps the current stack for that of the one named by that label":
+    let oldStack = calc.stack
+    calc.stack = calc.variables.getOrDefault(a)
+    if oldStack.len != 0:
+      calc.variables[a] = oldStack
+    else:
+      if calc.variables.hasKey(a):
+        calc.variables.del a
+  VariableDelete = (l, "vardel"); "Takes a label and deletes the variable by that name":
+    calc.variables.del a
+
 defineCommands(BitCommands, bitDocumentation, runBits):
   And = (n, n, "and"); "Runs a binary and operation on two numbers":
     calculate a.int and b.int
@@ -431,3 +457,4 @@ proc registerDefaults*(calc: Calc) =
   calc.registerCommandRunner runBits, BitCommands, "Bitwise", bitDocumentation
   calc.registerCommandRunner runCommand, Commands, "Other", documentation
   calc.registerCommandRunner runStack, StackCommands, "Stack", stackDocumentation
+  calc.registerCommandRunner runVariable, VariableCommands, "Variable", variableDocumentation

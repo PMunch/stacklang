@@ -1,7 +1,7 @@
 import stacklanglib
 import prompt, unicode, termstyle
 import strutils except tokenize
-import sequtils, math, tables, options
+import sequtils, math, tables, options, os
 import nancy
 
 proc intersperse(str: string, every: int, sep = '_'): string =
@@ -96,9 +96,19 @@ template raiseInputError(msg, argument: string): untyped =
   e.input = argument
   raise e
 
+proc toEvaluateable(el: Element): string =
+  case el.kind:
+  of Label: "\\" & el.lbl
+  of String: "\"" & el.str
+  of Number: el.presentNumber
+
 defineCommands(ShellCommands, shellDocumentation, runShell):
-  Exit = "exit"; "Exits interactive stacklang":
+  Exit = "exit"; "Exits interactive stacklang, saving custom commands":
     echo ""
+    var output = open(getAppDir() / "stacklang.custom", fmWrite)
+    for cmd, doc in calc.documentation["Custom"]:
+      output.writeLine "\"", doc.msg, "\" ", cmd, " ", calc.customCommands[cmd].map(toEvaluateable).join(" "), " ", cmd, " mkcmd doccmd"
+    output.close()
     quit 0
   History = "history"; "Prints out the entire command history so far":
     echo ""
@@ -163,6 +173,12 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
         msg.insert(($calc.stack.pop) & " ")
       stdout.write "\n" & msg
     else: discard
+  ListVariables = "list"; "Lists all currently stored variables":
+    var variableTable: TerminalTable
+    for key, value in calc.variables:
+      variableTable.add $key, "[ " & value.mapIt($it).join(" ") & " ]"
+    echo ""
+    variableTable.echoTable(padding = 3)
 
 calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
 
@@ -238,10 +254,8 @@ proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
 var p = Prompt.init(promptIndicator = "> ", colorize = colorize)
 p.showPrompt()
 
-while true:
-  let
-    input = p.readLine()
-    tokens = tokenize(input)
+proc evaluateString(input: string) =
+  let tokens = tokenize(input)
   commandHistory.add tokens
   let backup = deepCopy calc
   try:
@@ -262,6 +276,15 @@ while true:
   if calc.stack.len != 0:
     echo ""
     stdout.write "[ " &  calc.stack.map(`$`).join("  ") & " ]"
+
+if fileExists(getAppDir() / "stacklang.custom"):
+  for input in lines(getAppDir() / "stacklang.custom"):
+    evaluateString(input)
+  reset commandHistory
+
+while true:
+  let input = p.readLine()
+  evaluateString(input)
   echo ""
   var indicator = ""
   for awaiting in calc.awaitingCommands:
