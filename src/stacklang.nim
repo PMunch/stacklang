@@ -251,10 +251,7 @@ proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
         of String: yellow part.string
       )
 
-var p = Prompt.init(promptIndicator = "> ", colorize = colorize)
-p.showPrompt()
-
-proc evaluateString(input: string) =
+proc evaluateString(input: string, output = true) =
   let tokens = tokenize(input)
   commandHistory.add tokens
   let backup = deepCopy calc
@@ -273,14 +270,26 @@ proc evaluateString(input: string) =
     calc = backup
     commandHistory.setLen commandHistory.len - 1
 
-  if calc.stack.len != 0:
-    echo ""
-    stdout.write "[ " &  calc.stack.map(`$`).join("  ") & " ]"
+  if output:
+    if calc.stack.len != 0:
+      echo ""
+      stdout.write "[ " &  calc.stack.map(`$`).join("  ") & " ]"
 
 if fileExists(getAppDir() / "stacklang.custom"):
   for input in lines(getAppDir() / "stacklang.custom"):
-    evaluateString(input)
+    evaluateString(input, false)
   reset commandHistory
+
+if commandLineParams().len > 0:
+  for input in commandLineParams():
+    evaluateString(input, false)
+  for element in calc.stack:
+    stdout.write element, " "
+  stdout.write "\n"
+  quit 0
+
+var p = Prompt.init(promptIndicator = "> ", colorize = colorize)
+p.showPrompt()
 
 while true:
   let input = p.readLine()
