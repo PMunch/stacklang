@@ -318,6 +318,11 @@ defineCommands(VariableCommands, variableDocumentation, runVariable):
     else:
       calc.stack = calc.stack.concat calc.variables[a]
       calc.variables.del a
+  VariableExpand = (l, "varexp"); "Takes a label and puts all elements of that variable onto the current stack":
+    if not calc.variables.hasKey(a):
+      raise newException(ValueError, "No variable named " & a)
+    else:
+      calc.stack = calc.stack.concat calc.variables[a]
   VariableSwap = (l, "varswp"); "Takes a label and swaps the current stack for that of the one named by that label":
     let oldStack = calc.stack
     calc.stack = calc.variables.getOrDefault(a)

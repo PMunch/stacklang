@@ -6,6 +6,7 @@ description   = "An easy to use programmable RPN calculator"
 license       = "MIT"
 srcDir        = "src"
 bin           = @["stacklang"]
+installExt    = @["nim"]
 
 
 # Dependencies
