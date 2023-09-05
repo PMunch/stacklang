@@ -1,8 +1,14 @@
 import stacklanglib
-import prompt, unicode, termstyle
+import prompt, unicode
+import termstyle
 import strutils except tokenize
 import sequtils, math, tables, options, os
 import nancy
+import terminal
+
+let
+  isPipe = not isatty(stdin)
+  shouldStyle = (not isPipe) and commandLineParams().len == 0
 
 proc intersperse(str: string, every: int, sep = '_'): string =
   var s = str
@@ -62,13 +68,19 @@ proc `$`(elem: Element): string =
       if calc.isCommand(elem.lbl.Token):
         if calc.customCommands.hasKey(elem.lbl) or
           calc.tmpCommands.hasKey(elem.lbl):
-          italic bold elem.lbl
+          if shouldStyle: italic bold elem.lbl
+          else: elem.lbl
         else:
-          bold elem.lbl
+          if shouldStyle: bold elem.lbl
+          else: elem.lbl
       else:
         elem.lbl
-    of Number: blue elem.presentNumber
-    of String: yellow "\"" & elem.str & "\""
+    of Number:
+      if shouldStyle: blue elem.presentNumber
+      else: elem.presentNumber
+    of String:
+      if shouldStyle: yellow "\"" & elem.str & "\""
+      else: "\"" & elem.str & "\""
 
 proc `$`(command: seq[Token]): string =
   command.mapIt(it.string).join("  ")
@@ -99,23 +111,24 @@ template raiseInputError(msg, argument: string): untyped =
 proc toEvaluateable(el: Element): string =
   case el.kind:
   of Label: "\\" & el.lbl
-  of String: "\"" & el.str
+  of String: "\"" & el.str & "\""
   of Number: el.presentNumber
 
 defineCommands(ShellCommands, shellDocumentation, runShell):
   Exit = "exit"; "Exits interactive stacklang, saving custom commands":
-    echo ""
+    if not isPipe: echo ""
     var output = open(getAppDir() / "stacklang.custom", fmWrite)
     for cmd, doc in calc.documentation["Custom"]:
       output.writeLine "\"", doc.msg, "\" ", cmd, " ", calc.customCommands[cmd].map(toEvaluateable).join(" "), " ", cmd, " mkcmd doccmd"
     output.close()
     quit 0
   History = "history"; "Prints out the entire command history so far":
-    echo ""
+    if not isPipe: echo ""
     for i, command in commandHistory[0..^2]:
       stdout.write i, ": ", command, (if i != commandHistory.len - 2: "\n" else: "")
   Help = "help"; "Prints out all documentation":
     var customTable: TerminalTable
+    if not isPipe: echo ""
     for category in calc.documentation.keys:
       var help: TerminalTable
       for _, line in documentationLines(category):
@@ -125,20 +138,20 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
       elif help.rows > 0:
         echo category & " commands:"
         help.echoTable(padding = 3)
-      echo ""
+        echo ""
     if customTable.rows > 0:
       echo "Custom commands:"
       customTable.echoTable(padding = 3)
   Explain = (l, "explain"); "Prints out the documentation for a single command or category":
     if calc.isCommand a.Token:
-      stdout.write "\n"
+      if not isPipe: echo ""
       let padding = ' '.repeat(3)
       for category in calc.documentation.keys:
         for name, line in documentationLines(category):
           if name == a:
             stdout.write line.join padding
     elif calc.documentation.hasKey a:
-      stdout.write "\n"
+      if not isPipe: echo ""
       for category in calc.documentation.keys:
         if category == a:
           var help: TerminalTable
@@ -149,7 +162,8 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     else:
       raiseInputError("No such command or category", a)
   Display = (a, "display"); "Shows the element on top off the stack without poping it":
-    stdout.write "\n" & $a
+    if not isPipe: echo ""
+    stdout.write $a
     calc.stack.push a
   Print = (a, "print"); "Takes a number of things or a label to go back to, then prints those things in FIFO order with space separators":
     case a.kind:
@@ -160,9 +174,12 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
         abs(a.num.int)
       if pos >= 0:
         var msg = ""
+        var first = true
         while calc.stack.len > pos:
-          msg.insert(($calc.stack.pop) & " ")
-        stdout.write "\n" & msg
+          msg.insert(($calc.stack.pop) & (if first: "" else: " "))
+          first = false
+        if not isPipe: echo ""
+        stdout.write msg
     of Label:
       var pos = calc.stack.high
       while calc.stack[pos].kind != Label or calc.stack[pos].lbl != a.lbl:
@@ -171,14 +188,16 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
       var msg = ""
       while calc.stack.len > pos:
         msg.insert(($calc.stack.pop) & " ")
-      stdout.write "\n" & msg
+      if not isPipe: echo ""
+      stdout.write msg
     else: discard
   ListVariables = "list"; "Lists all currently stored variables":
-    var variableTable: TerminalTable
-    for key, value in calc.variables:
-      variableTable.add $key, "[ " & value.mapIt($it).join(" ") & " ]"
-    echo ""
-    variableTable.echoTable(padding = 3)
+    if calc.variables.len != 0:
+      var variableTable: TerminalTable
+      for key, value in calc.variables:
+        variableTable.add $key, "[ " & value.mapIt($it).join(" ") & " ]"
+      if not isPipe: echo ""
+      variableTable.echoTable(padding = 3)
 
 calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
 
@@ -269,6 +288,11 @@ proc evaluateString(input: string, output = true) =
     stdout.write red e.msg
     calc = backup
     commandHistory.setLen commandHistory.len - 1
+  except StackLangError as e:
+    echo red("\nError with execution")
+    stdout.write red e.msg
+    calc = backup
+    commandHistory.setLen commandHistory.len - 1
 
   if output:
     if calc.stack.len != 0:
@@ -280,25 +304,44 @@ if fileExists(getAppDir() / "stacklang.custom"):
     evaluateString(input, false)
   reset commandHistory
 
-if commandLineParams().len > 0:
-  for input in commandLineParams():
-    evaluateString(input, false)
-  for element in calc.stack:
-    stdout.write element, " "
-  stdout.write "\n"
-  quit 0
+proc handleCommandLine() =
+  if commandLineParams().len > 0:
+    for input in commandLineParams():
+      evaluateString(input, false)
 
-var p = Prompt.init(promptIndicator = "> ", colorize = colorize)
-p.showPrompt()
+proc dumpStack() =
+  for e in 0..calc.stack.high:
+    let element = calc.stack[e]
+    stdout.write element
+    if e != calc.stack.high: stdout.write " "
+  stdout.write "\n"
+
+if not isPipe:
+  handleCommandLine()
+  if commandLineParams().len > 0:
+    dumpStack()
+    quit 0
+
+var p: Prompt
+if not isPipe:
+  p = Prompt.init(promptIndicator = "> ", colorize = colorize)
+  p.showPrompt()
 
 while true:
-  let input = p.readLine()
-  evaluateString(input)
-  echo ""
-  var indicator = ""
-  for awaiting in calc.awaitingCommands:
-    indicator &= "["
-    for argument in awaiting.elems:
-      indicator &= $argument & " "
-    indicator &= awaiting.name.bold & "] "
-  p.setIndicator(indicator & "> ")
+  let input =
+    try:
+      if isPipe: stdin.readLine() else: p.readLine()
+    except EOFError:
+      handleCommandLine()
+      dumpStack()
+      quit 0
+  evaluateString(input, shouldStyle)
+  if shouldStyle:
+    echo ""
+    var indicator = ""
+    for awaiting in calc.awaitingCommands:
+      indicator &= "["
+      for argument in awaiting.elems:
+        indicator &= $argument & " "
+      indicator &= awaiting.name.bold & "] "
+    p.setIndicator(indicator & "> ")

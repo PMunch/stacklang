@@ -133,18 +133,26 @@ template stepCommand*(command: Command) =
 proc runCommand*(calc: Calc, command: string): Option[iterator() {.closure.}]
 
 proc evaluateToken*(calc: Calc, token: Token) =
+  var commandLabel: string
   template doTok() =
     case element.kind:
     of Number, String: calc.stack.add element
     of Label:
       if element.lbl[0] != '\\':
-        calc.evaluateToken(Token(element.lbl))
+        if element.lbl == "cmdlabel":
+          if commandLabel.len == 0:
+            raise newException(StackLangError, "Unable to call cmdlabel outside command execution")
+          calc.evaluateToken(Token(commandLabel))
+        else:
+          calc.evaluateToken(Token(element.lbl))
       else:
         calc.stack.add Token(element.lbl[1..^1]).toElement
   if calc.customCommands.hasKey(token.string):
+    commandLabel = "var_" & rand(int.high).toHex
     for element in calc.customCommands[token.string]:
       doTok()
   elif calc.tmpCommands.hasKey(token.string):
+    commandLabel = "var_" & rand(int.high).toHex
     for element in calc.tmpCommands[token.string]:
       doTok()
   else:
@@ -202,8 +210,15 @@ template calculate(command: untyped): untyped =
 template untilPosition(a: Element, action: untyped): untyped =
   case a.kind:
   of Label:
+    var iterationsLeft = 100_000
+    let numeral = try: (num: parseFloat(a.lbl), i: true) except: (num: 0.0, i: false)
     while calc.peek.kind != Label or calc.peek.lbl != a.lbl:
+      if calc.peek.kind == Number and numeral.i and calc.peek.num == numeral.num:
+        break
       action
+      dec iterationsLeft
+      if iterationsLeft == 0:
+        raise newException(StackLangError, "Until ran for too many iterations")
   of Number:
     var
       consumeLen = a.num.int
@@ -305,6 +320,10 @@ defineCommands(StackCommands, stackDocumentation, runStack):
 defineCommands(VariableCommands, variableDocumentation, runVariable):
   VariablePush = (a, l, "varpush"); "Takes an element and a label and pushes the element to the stack named by the label":
     calc.variables.mgetOrPut(b, @[]).add a
+  VariableTake = (n|l, l, "vartake"); "Takes a position and a label and moves elements from the stack to the variable until it's at the position":
+    let spos = calc.variables.mgetOrPut(b, @[]).len
+    untilPosition(a):
+      calc.variables[b].insert(calc.pop(), spos)
   VariablePop = (l, "varpop"); "Takes a label and pops an element of the stack named by that label":
     if not calc.variables.hasKey(a):
       raise newException(ValueError, "No variable named " & a)
@@ -339,47 +358,53 @@ defineCommands(BitCommands, bitDocumentation, runBits):
     calculate a.int and b.int
   Or = (n, n, "or"); "Runs a binary or operation on two numbers":
     calculate a.int or b.int
-  Not = (n, "not"); "Runs a binary not operation on two numbers":
+  Xor = (n, n, "xor"); "Runs a binary xor operation on two numbers":
+    calculate a.int xor b.int
+  Not = (n, "not"); "Runs a binary not operation on a number":
     calculate not a.int
   ShiftLeft = (n, n, "shl"); "Shift a number left by the given amount":
     calculate a.int shl b.int
   ShiftRight = (n, n, "shr"); "Shift a number right by the given amount":
     calculate a.int shr b.int
-  Truncate (n, n, "trunc"); "Truncates a binary number":
+  Truncate (n, n, "truncbin"); "Truncates a binary number":
     calculate a.int and ((0b1 shl b.int) - 1)
 
-defineCommands(Commands, documentation, runCommand):
+defineCommands(ModificationCommands, modDocumentation, runModifications):
+  Round = (n, "round"); "Rounds a number to the closest integer":
+    calculate round(a)
+  Ceil = (n, "ceil"); "Rounds a number up":
+    calculate ceil(a)
+  Floor = (n, "floor"); "Rounds a number down":
+    calculate floor(a)
+  Sgn = (n, "sgn"); "Returns -1 for negative numbers, 1 for positive, and 0 for 0":
+    calculate sgn(a)
+  SplitDecimal = (n, "splitdec"); "Takes a number and splits it into an integer and floating part":
+    let (intp, flop) = splitDecimal(a)
+    calc.stack.push Element(kind: Number, num: float(intp), encoding: a_encoding)
+    calc.stack.push Element(kind: Number, num: float(flop), encoding: a_encoding)
+  Trunc = (n, "trunc"); "Truncates the floating part off a number":
+    calculate trunc(a)
+  Clamp = (n, n, n, "clamp"); "Clamps a value in between two values":
+    calculate clamp(a, b, c)
+
+defineCommands(EncCommands, encDocumentation, runEncoding):
   Hex = (n, "hex"); "Converts a number to hex encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Hexadecimal))
   Bin = (n, "bin"); "Converts a number to binary encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
   Dec = (n, "dec"); "Converts a number to decimal encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
+
+defineCommands(Commands, documentation, runCommand):
   Nop = "nop"; "Does nothing":
     discard
-  Until = (l|n, l, "until"); "Takes a label or a length and runs the given command until the stack is that length or the label is the topmost element. If the label is parseable as a number it can also be used to run until a number is on top":
+  Until = (l|n, l, "until"); "Takes a label or a position and runs the given command until the stack is that position":
     if not calc.isCommand(b.Token):
       var e = newException(InputError, "Label is not a command")
       e.input = b
       raise e
-    var iterationsLeft = 100_000
-    template runIteration() =
+    untilPosition(a):
       calc.evaluateToken(b.Token)
-      dec iterationsLeft
-      if iterationsLeft == 0:
-        raise newException(StackLangError, "Until ran for too many iterations")
-    case a.kind:
-    of Number:
-      while calc.stack.len.float != a.num:
-        runIteration()
-    of Label:
-      let numeral = try: (num: parseFloat(a.lbl), i: true) except: (num: 0.0, i: false)
-      while true:
-        if calc.stack.len == 0: yield
-        if calc.stack[^1] == a: break
-        if numeral.i and calc.stack[^1].kind == Number and calc.stack[^1].num == numeral.num: break
-        runIteration()
-    else: discard
   MakeCommand = (n|l, "mkcmd"); "Takes a label or a position and creates a command of everything from that position to the end of the stack":
     var newCmd: seq[Element]
     untilPosition(a):
@@ -460,6 +485,8 @@ proc registerCommandRunner*(calc: Calc, commandRunner: CommandRunner, commands: 
 proc registerDefaults*(calc: Calc) =
   calc.registerCommandRunner runMath, MathCommands, "Math", mathDocumentation
   calc.registerCommandRunner runBits, BitCommands, "Bitwise", bitDocumentation
+  calc.registerCommandRunner runModifications, ModificationCommands, "Modifications", modDocumentation
+  calc.registerCommandRunner runEncoding, EncCommands, "Encoding", encDocumentation
   calc.registerCommandRunner runCommand, Commands, "Other", documentation
   calc.registerCommandRunner runStack, StackCommands, "Stack", stackDocumentation
   calc.registerCommandRunner runVariable, VariableCommands, "Variable", variableDocumentation
