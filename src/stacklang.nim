@@ -251,7 +251,7 @@ calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator(
     some(iterator() {.closure.} =
       calc.stack.pushValue argument.Token))
 
-proc colorize(x: seq[Rune]): seq[Rune] {.gcsafe.} =
+proc colorize(x: seq[Rune]): seq[Rune] = # {.gcsafe.} =
   for part in ($x).tokenize(withWhitespace = true):
     if part.string.isEmptyOrWhitespace == true:
       result &= toRunes(part.string)

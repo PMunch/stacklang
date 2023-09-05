@@ -36,6 +36,7 @@ type
     input*: string
   ArgumentError* = object of StackLangError
     currentCommand*: Command
+  StackEmptyError* = object of StackLangError
   CommandRunner* = proc (calc: Calc, argument: string): Option[iterator() {.closure.}]
 
 template raiseInputError(msg, argument: string): untyped =
@@ -57,7 +58,7 @@ template push*[T](stack: var Stack[T], value: T) =
 template pop*(calc: Calc): Element =
   block:
     if calc.stack.len == 0:
-      yield
+      raise newException(StackEmptyError, "The stack didn't have sufficient elements")
     calc.awaitingCommands[^1].elems.add calc.stack[^1]
     calc.stack.setLen calc.stack.len - 1
     calc.awaitingCommands[^1].elems[^1]

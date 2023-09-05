@@ -13,7 +13,7 @@ installExt    = @["nim"]
 
 requires "nim >= 0.19.9"
 requires "termstyle"
-requires "https://github.com/PMunch/nim-prompt"
+requires "https://github.com/PMunch/nim-prompt >= 0.1.2"
 requires "npeg"
 requires "macroutils"
 requires "nancy"
