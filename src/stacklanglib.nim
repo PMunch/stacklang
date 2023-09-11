@@ -350,20 +350,20 @@ defineCommands(VariableCommands, variableDocumentation, runVariable):
       calc.variables[b].insert(calc.pop(), spos)
   VariablePop = (l, "varpop"); "Takes a label and pops an element of the stack named by that label":
     if not calc.variables.hasKey(a):
-      raise newException(ValueError, "No variable named " & a)
+      raiseInputError("No variable with this name", a)
     else:
       calc.stack.push calc.variables[a].pop
       if calc.variables[a].len == 0:
         calc.variables.del a
   VariableMerge = (l, "varmrg"); "Takes a label and puts all elements of that variable onto the current stack, deleting the variable":
     if not calc.variables.hasKey(a):
-      raise newException(ValueError, "No variable named " & a)
+      raiseInputError("No variable with this name", a)
     else:
       calc.stack = calc.stack.concat calc.variables[a]
       calc.variables.del a
   VariableExpand = (l, "varexp"); "Takes a label and puts all elements of that variable onto the current stack":
     if not calc.variables.hasKey(a):
-      raise newException(ValueError, "No variable named " & a)
+      raiseInputError("No variable with this name", a)
     else:
       calc.stack = calc.stack.concat calc.variables[a]
   VariableSwap = (l, "varswp"); "Takes a label and swaps the current stack for that of the one named by that label":
@@ -426,9 +426,7 @@ defineCommands(Commands, documentation, runCommand):
     discard
   Until = (l|n, l, "until"); "Takes a label or a position and runs the given command until the stack is that position":
     if not calc.isCommand(b.Token):
-      var e = newException(InputError, "Label is not a command")
-      e.input = b
-      raise e
+      raiseInputError("Label is not a command", b)
     untilPosition(a):
       calc.evaluateToken(b.Token)
   MakeCommand = (n|l, "mkcmd"); "Takes a label or a position and creates a command of everything from that position to the end of the stack":
@@ -474,15 +472,17 @@ defineCommands(Commands, documentation, runCommand):
       raiseInputError("No such command", a)
   ExpandCommand = (l, "excmd"); "Expands the given command onto the stack":
     if calc.customCommands.hasKey(a) or calc.tmpCommands.hasKey(a):
-      for elem in calc.customCommands[a]:
-        calc.stack.push elem
-      for elem in calc.tmpCommands[a]:
-        calc.stack.push elem
+      if calc.customCommands.hasKey(a):
+        for elem in calc.customCommands[a]:
+          calc.stack.push elem
+      if calc.tmpCommands.hasKey(a):
+        for elem in calc.tmpCommands[a]:
+          calc.stack.push elem
     else:
       raiseInputError("No such command", a)
-  DropWaiting = "dropwait"; "Drops the last command waiting for input":
-    calc.awaitingCommands[^2] = calc.awaitingCommands[^1]
-    calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
+  #DropWaiting = "dropwait"; "Drops the last command waiting for input":
+  #  calc.awaitingCommands[^2] = calc.awaitingCommands[^1]
+  #  calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
   calc.customCommands.hasKey(cmd.string) or
