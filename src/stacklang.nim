@@ -211,54 +211,53 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
 calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
 
 
-calc.registerCommandRunner(proc (calc: Calc, argument: string): Option[iterator() {.closure.}] =
+calc.registerCommandRunner(proc (calc: Calc, argument: string): bool =
+  result = true
   if argument[0] == '!':
-    some(iterator() {.closure.} =
-      try:
-        var
-          parts = argument[1..^1].split(':')
-          pos = if parts[0] == "!": -1 else: parseInt(parts[0])
-        if commandHistory.high == pos and parts.len == 1:
-          raiseInputError("Can't expand current command", argument)
-        if pos < 0:
-          pos += commandHistory.high
-        if commandHistory.high < pos or pos < 0:
-          raiseInputError("Can't expand command, not enough commands", argument)
-        case parts.len:
+    try:
+      var
+        parts = argument[1..^1].split(':')
+        pos = if parts[0] == "!": -1 else: parseInt(parts[0])
+      if commandHistory.high == pos and parts.len == 1:
+        raiseInputError("Can't expand current command", argument)
+      if pos < 0:
+        pos += commandHistory.high
+      if commandHistory.high < pos or pos < 0:
+        raiseInputError("Can't expand command, not enough commands", argument)
+      case parts.len:
+      of 1:
+        commandHistory[^1] = @[]
+        for token in commandHistory[pos]:
+          calc.evaluateToken token
+          commandHistory[^1].add token
+      of 2:
+        let subrange = parts[1].split('-')
+        case subrange.len:
         of 1:
-          commandHistory[^1] = @[]
-          for token in commandHistory[pos]:
-            calc.evaluateToken token
-            commandHistory[^1].add token
+          let sub = parseInt(parts[1])
+          if commandHistory[pos].high < sub:
+            raiseInputError("Can't expand command, no such sub-command", argument)
+          calc.evaluateToken commandHistory[pos][sub]
+          commandHistory[^1] = @[commandHistory[pos][sub]]
         of 2:
-          let subrange = parts[1].split('-')
-          case subrange.len:
-          of 1:
-            let sub = parseInt(parts[1])
-            if commandHistory[pos].high < sub:
-              raiseInputError("Can't expand command, no such sub-command", argument)
-            calc.evaluateToken commandHistory[pos][sub]
-            commandHistory[^1] = @[commandHistory[pos][sub]]
-          of 2:
-            let
-              start = parseInt(subrange[0])
-              stop = if subrange[1].len > 0: parseInt(subrange[1]) else: commandHistory[pos].high
-            if stop < start or commandHistory[pos].high < start or commandHistory[pos].high > stop:
-              raiseInputError("Can't expand command, no such sub-command", argument)
-            commandHistory[^1] = @[]
-            for i in start..stop:
-              calc.evaluateToken commandHistory[pos][i]
-              commandHistory[^1].add commandHistory[pos][i]
-          else:
-            raiseInputError("Can't expand command, unable to parse segments", argument)
+          let
+            start = parseInt(subrange[0])
+            stop = if subrange[1].len > 0: parseInt(subrange[1]) else: commandHistory[pos].high
+          if stop < start or commandHistory[pos].high < start or commandHistory[pos].high > stop:
+            raiseInputError("Can't expand command, no such sub-command", argument)
+          commandHistory[^1] = @[]
+          for i in start..stop:
+            calc.evaluateToken commandHistory[pos][i]
+            commandHistory[^1].add commandHistory[pos][i]
         else:
-          raiseInputError("Can't expand command, too many segments", argument)
-      except ValueError:
-        raiseInputError("Can't expand command, unable to parse segments", argument)
-    )
+          raiseInputError("Can't expand command, unable to parse segments", argument)
+      else:
+        raiseInputError("Can't expand command, too many segments", argument)
+    except ValueError:
+      raiseInputError("Can't expand command, unable to parse segments", argument)
   else:
-    some(iterator() {.closure.} =
-      calc.stack.pushValue argument.Token))
+    calc.stack.pushValue argument.Token
+)
 
 proc colorize(x: seq[Rune]): seq[Rune] = # {.gcsafe.} =
   for part in ($x).tokenize(withWhitespace = true):
@@ -286,7 +285,7 @@ proc evaluateString(input: string, output = true) =
   let backup = new Calc
   backup.commandRunners = calc.commandRunners
   backup.stack = calc.stack
-  backup.awaitingCommands = calc.awaitingCommands
+  #backup.awaitingCommands = calc.awaitingCommands
   backup.customCommands = calc.customCommands
   backup.documentation = calc.documentation
   backup.tmpCommands = calc.tmpCommands
@@ -295,15 +294,19 @@ proc evaluateString(input: string, output = true) =
   try:
     for token in tokens:
       calc.evaluateToken(token)
-    calc.execute()
+    #calc.execute()
   except ArgumentError as e:
-    echo red("\nError consuming element #", e.currentCommand.elems.len, ": "), e.currentCommand.elems[^1], red ", in command: ", bold e.currentCommand.name
+    echo red("\nError consuming element ") & $e.currentElement & red(" from command: ") & e.currentCommand
     stdout.write red e.msg
     calc = backup
     commandHistory.setLen commandHistory.len - 1
   except InputError as e:
     echo red("\nError with input: "), e.input
     stdout.write red e.msg
+    calc = backup
+    commandHistory.setLen commandHistory.len - 1
+  except StackEmptyError as e:
+    stdout.write red("\n" & e.msg)
     calc = backup
     commandHistory.setLen commandHistory.len - 1
   except StackLangError as e:
@@ -356,10 +359,3 @@ while true:
   evaluateString(input, shouldStyle)
   if shouldStyle:
     echo ""
-    var indicator = ""
-    for awaiting in calc.awaitingCommands:
-      indicator &= "["
-      for argument in awaiting.elems:
-        indicator &= $argument & " "
-      indicator &= awaiting.name.bold & "] "
-    p.setIndicator(indicator & "> ")

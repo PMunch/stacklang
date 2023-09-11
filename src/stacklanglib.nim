@@ -23,24 +23,20 @@ type
   Calc* = ref object
     commandRunners*: seq[CommandRunner]
     stack*: Stack[Element]
-    awaitingCommands*: seq[Command]
     customCommands*: Table[string, seq[Element]]
     documentation*: OrderedTable[string, OrderedTable[string, Documentation]]
     tmpCommands*: Table[string, seq[Element]]
     variables*: Table[string, Stack[Element]]
     noEvalUntil*: string
     #randoms*: seq[string]
-  Command* = ref object
-    name*: string
-    exec*: iterator()
-    elems*: seq[Element]
   StackLangError* = object of CatchableError
   InputError* = object of StackLangError
     input*: string
   ArgumentError* = object of StackLangError
-    currentCommand*: Command
+    currentCommand*: string
+    currentElement*: Element
   StackEmptyError* = object of StackLangError
-  CommandRunner* = proc (calc: Calc, argument: string): Option[iterator() {.closure.}]
+  CommandRunner* = proc (calc: Calc, argument: string): bool
 
 template raiseInputError(msg, argument: string): untyped =
   var e = newException(InputError, msg)
@@ -58,18 +54,16 @@ proc `$`(x: Element): string =
 template push*[T](stack: var Stack[T], value: T) =
   stack.add value
 
-template pop*(calc: Calc): Element =
-  block:
-    if calc.stack.len == 0:
-      raise newException(StackEmptyError, "The stack didn't have sufficient elements")
-    calc.awaitingCommands[^1].elems.add calc.stack[^1]
-    calc.stack.setLen calc.stack.len - 1
-    calc.awaitingCommands[^1].elems[^1]
+proc pop*(calc: Calc): Element =
+  if calc.stack.len == 0:
+    raise newException(StackEmptyError, "The stack didn't have sufficient elements")
+  result = calc.stack[^1]
+  calc.stack.setLen calc.stack.len - 1
 
 template peek*(calc: Calc): Element =
   block:
     if calc.stack.len == 0:
-      yield
+      raise newException(StackEmptyError, "The stack didn't have sufficient elements")
     calc.stack[^1]
 
 proc pushNumber*(stack: var Stack[Element], x: Mapm) =
@@ -134,9 +128,6 @@ proc toElement*(value: Token): Element =
 proc pushValue*(stack: var Stack[Element], value: Token) =
   stack.push value.toElement
 
-template stepCommand*(command: Command) =
-  command.exec()
-
 proc evaluateToken*(calc: Calc, token: Token) =
   if calc.noEvalUntil.len != 0:
     if token.string == calc.noEvalUntil:
@@ -171,29 +162,8 @@ proc evaluateToken*(calc: Calc, token: Token) =
       for element in calc.tmpCommands[token.string]:
         doTok()
     else:
-      calc.awaitingCommands.add new Command
-      calc.awaitingCommands[^1].name = token.string
-      calc.awaitingCommands[^1].exec = block:
-        var command: Option[iterator() {.closure.}]
-        for runner in calc.commandRunners:
-          command = calc.runner(token.string)
-          if command.isSome: break
-        command.get
-      calc.awaitingCommands[^1].stepCommand()
-      if calc.awaitingCommands[^1].exec.finished:
-        calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
-  except MapmError as e:
-    var ex = newException(StackLangError, "Error executing math operation: " & e.msg)
-    ex.parent = e
-    raise ex
-
-template execute*(calc: Calc) =
-  try:
-    while calc.stack.len != 0 and calc.awaitingCommands.len != 0:
-      var i = calc.awaitingCommands[calc.awaitingCommands.high]
-      i.stepCommand()
-      if i.exec.finished:
-        calc.awaitingCommands.setLen(calc.awaitingCommands.len-1)
+      for runner in calc.commandRunners:
+        if calc.runner(token.string): break
   except MapmError as e:
     var ex = newException(StackLangError, "Error executing math operation: " & e.msg)
     ex.parent = e
@@ -259,7 +229,8 @@ template untilPosition(a: Element, action: untyped): untyped =
         "Can't run with no arguments",
         "Current stack position is lower than requested stopping point"
         ][consumeLen.abs.min(1)])
-      e.currentCommand = calc.awaitingCommands[^1]
+      e.currentCommand = command # Command comes from the defineCommands macro
+      e.currentElement = a
       raise e
     while consumed != consumeLen:
       action
@@ -491,9 +462,6 @@ defineCommands(Commands, documentation, runCommand):
           calc.stack.push elem
     else:
       raiseInputError("No such command", a)
-  #DropWaiting = "dropwait"; "Drops the last command waiting for input":
-  #  calc.awaitingCommands[^2] = calc.awaitingCommands[^1]
-  #  calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
   calc.customCommands.hasKey(cmd.string) or

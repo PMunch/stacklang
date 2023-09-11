@@ -5,7 +5,9 @@ template assureKind(expectedKind: ElementKind or set[ElementKind], element: unty
   let value = element
   if (when expectedKind is ElementKind: value.kind != expectedKind else: value.kind notin expectedKind):
     var e = newException(ArgumentError, "Wrong type passed to command, expected " & $expectedKind & ", but got " & $value.kind)
-    e.currentCommand = calc.awaitingCommands[^1]
+    #e.currentCommand =  #calc.awaitingCommands[^1]
+    e.currentCommand = command
+    e.currentElement = value
     raise e
   value
 
@@ -48,9 +50,8 @@ macro defineCommands*(enumName, docarrayName, runnerName,
       enumInfo = definitions[i]
       commandInfo = definitions[i+1]
     let command = superQuote do:
-      `cmd` = some(iterator () {.closure.} =
-        `commandInfo[1]`
-      )
+      `cmd` = true
+      `commandInfo[1]`
     let documentation = superQuote do:
       Documentation(msg: `commandInfo[0]`, arguments: @[])
     if enumInfo[1].kind == nnkStrLit:
@@ -85,12 +86,12 @@ macro defineCommands*(enumName, docarrayName, runnerName,
               findKinds(x[2])
             else: assert false
           kind.findKinds()
-          command[1][1].body.insert(0, quote do:
+          command.insert(0, quote do:
             let `letterIdent` = assureKind(`kinds`, `calc`.pop())
           )
           documentation[^1][1][1].add documentations
         else:
-          command[1][1].body.insert(0, case parseEnum[Argument]($kind):
+          command.insert(0, case parseEnum[Argument]($kind):
             of ANumber: (quote do:
               let n = assureKind(Number, `calc`.pop())
               let `letterIdent` = n.num
@@ -115,7 +116,7 @@ macro defineCommands*(enumName, docarrayName, runnerName,
   result = quote do:
     `enumDef`
     `docstrings`
-    proc `runnerName`*(`calc`: Calc, `templateArgument`: string): Option[iterator() {.closure.}] =
+    proc `runnerName`*(`calc`: Calc, `templateArgument`: string): bool =
       #var `cmd`: Option[iterator() {.closure.}]
       #block runnerBody:
       var `parsedEnum`: `enumName`
