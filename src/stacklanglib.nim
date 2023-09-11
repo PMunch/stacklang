@@ -28,6 +28,7 @@ type
     documentation*: OrderedTable[string, OrderedTable[string, Documentation]]
     tmpCommands*: Table[string, seq[Element]]
     variables*: Table[string, Stack[Element]]
+    noEvalUntil*: string
     #randoms*: seq[string]
   Command* = ref object
     name*: string
@@ -136,9 +137,13 @@ proc pushValue*(stack: var Stack[Element], value: Token) =
 template stepCommand*(command: Command) =
   command.exec()
 
-proc runCommand*(calc: Calc, command: string): Option[iterator() {.closure.}]
-
 proc evaluateToken*(calc: Calc, token: Token) =
+  if calc.noEvalUntil.len != 0:
+    if token.string == calc.noEvalUntil:
+      calc.noEvalUntil.setLen 0
+    else:
+      if token.string[0] == '\\':
+        calc.stack.pushValue ("\\" & token.string).Token
       else:
         calc.stack.pushValue token
       return
@@ -423,6 +428,12 @@ defineCommands(EncCommands, encDocumentation, runEncoding):
 
 defineCommands(Commands, documentation, runCommand):
   Nop = "nop"; "Does nothing":
+    discard
+  NoEval = "noeval"; "Stops evaluation, all commands will simply be pushed to the stack":
+    calc.noEvalUntil = "eval"
+  NoEvalUntil = (l, "noevaluntil"); "Like noeval, but accepts a label which restarts execution before being evaluated":
+    calc.noEvalUntil = a
+  Eval = "eval"; "When noeval has been called, this will re-enable evaluation":
     discard
   Until = (l|n, l, "until"); "Takes a label or a position and runs the given command until the stack is that position":
     if not calc.isCommand(b.Token):
