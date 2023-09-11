@@ -1,8 +1,10 @@
 import math, strutils, npeg, tables, hashes, options, random, sequtils
+import mapm
+export mapm
 
 type
   ElementKind* = enum String, Label, Number
-  Encoding* = enum Decimal, Binary, Hexadecimal
+  Encoding* = enum Decimal, Scientific, Binary, Hexadecimal
   Element* = object
     case kind*: ElementKind
     of Label:
@@ -11,7 +13,7 @@ type
       str*: string
     of Number:
       encoding*: Encoding
-      num*: float
+      num*: Mapm
   Argument* = enum AString = "s", ALabel = "l", ANumber = "n", AAny = "a"
   Documentation* = object
     msg*: string
@@ -19,7 +21,7 @@ type
   Token* = distinct string
   Stack*[T] = seq[T]
   Calc* = ref object
-    commandRunners: seq[CommandRunner]
+    commandRunners*: seq[CommandRunner]
     stack*: Stack[Element]
     awaitingCommands*: seq[Command]
     customCommands*: Table[string, seq[Element]]
@@ -69,7 +71,7 @@ template peek*(calc: Calc): Element =
       yield
     calc.stack[^1]
 
-proc pushNumber*(stack: var Stack[Element], x: float) =
+proc pushNumber*(stack: var Stack[Element], x: Mapm) =
   stack.push Element(kind: Number, num: x)
 
 proc pushString*(stack: var Stack[Element], x: string) =
@@ -88,14 +90,17 @@ proc pushLabel*(stack: var Stack[Element], x: string) =
 proc toElement*(value: Token): Element =
   case value.string:
   of "pi":
-    Element(kind: Number, num: Pi)
+    Element(kind: Number, num: MM_Pi)
   of "tau":
-    Element(kind: Number, num: Tau)
+    Element(kind: Number, num: MM_2Pi)
   of "e":
-    Element(kind: Number, num: E)
+    Element(kind: Number, num: MM_E)
   else:
     try:
-      Element(kind: Number, num: parseFloat(value.string))
+      if (value.string.len == 1 and value.string[0].isDigit) or
+        (value.string.allCharsInSet(Digits + {'e', '-', '+', '.', '_'}) and not value.string.allCharsInSet({'e', '-', '+', '.', '_'})):
+        Element(kind: Number, num: initMapm(value.string.replace("_", "")))
+      else: raise newException(ValueError, "Invalid number")
     except:
       if value.string[0] == '"':
         if value.string[^1] == '"' and value.string.len > 1:
@@ -106,14 +111,14 @@ proc toElement*(value: Token): Element =
         case value.string[1]
         of 'x':
           if value.string.len == 2:
-            Element(kind: Number, num: 0.0, encoding: Hexadecimal)
+            Element(kind: Number, num: MMzero, encoding: Hexadecimal)
           else:
-            Element(kind: Number, num: parseHexInt(value.string).float, encoding: Hexadecimal)
+            Element(kind: Number, num: parseHexInt(value.string).initMapm, encoding: Hexadecimal)
         of 'b':
           if value.string.len == 2:
-            Element(kind: Number, num: 0.0, encoding: Binary)
+            Element(kind: Number, num: MMzero, encoding: Binary)
           else:
-            Element(kind: Number, num: parseBinInt(value.string).float, encoding: Binary)
+            Element(kind: Number, num: parseBinInt(value.string).initMapm, encoding: Binary)
         else:
           value.string.labelVerify
           Element(kind: Label, lbl: value.string)
@@ -134,47 +139,60 @@ template stepCommand*(command: Command) =
 proc runCommand*(calc: Calc, command: string): Option[iterator() {.closure.}]
 
 proc evaluateToken*(calc: Calc, token: Token) =
-  var commandLabel: string
-  template doTok() =
-    case element.kind:
-    of Number, String: calc.stack.add element
-    of Label:
-      if element.lbl[0] != '\\':
-        if element.lbl == "cmdlabel":
-          if commandLabel.len == 0:
-            raise newException(StackLangError, "Unable to call cmdlabel outside command execution")
-          calc.evaluateToken(Token(commandLabel))
-        else:
-          calc.evaluateToken(Token(element.lbl))
       else:
-        calc.stack.add Token(element.lbl[1..^1]).toElement
-  if calc.customCommands.hasKey(token.string):
-    commandLabel = "var_" & rand(int.high).toHex
-    for element in calc.customCommands[token.string]:
-      doTok()
-  elif calc.tmpCommands.hasKey(token.string):
-    commandLabel = "var_" & rand(int.high).toHex
-    for element in calc.tmpCommands[token.string]:
-      doTok()
-  else:
-    calc.awaitingCommands.add new Command
-    calc.awaitingCommands[^1].name = token.string
-    calc.awaitingCommands[^1].exec = block:
-      var command: Option[iterator() {.closure.}]
-      for runner in calc.commandRunners:
-        command = calc.runner(token.string)
-        if command.isSome: break
-      command.get
-    calc.awaitingCommands[^1].stepCommand()
-    if calc.awaitingCommands[^1].exec.finished:
-      calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
+        calc.stack.pushValue token
+      return
+  try:
+    var commandLabel: string
+    template doTok() =
+      case element.kind:
+      of Number, String: calc.stack.add element
+      of Label:
+        if element.lbl[0] != '\\':
+          if element.lbl == "cmdlabel":
+            if commandLabel.len == 0:
+              raise newException(StackLangError, "Unable to call cmdlabel outside command execution")
+            calc.evaluateToken(Token(commandLabel))
+          else:
+            calc.evaluateToken(Token(element.lbl))
+        else:
+          calc.stack.add Token(element.lbl[1..^1]).toElement
+    if calc.customCommands.hasKey(token.string):
+      commandLabel = "var_" & rand(int.high).toHex
+      for element in calc.customCommands[token.string]:
+        doTok()
+    elif calc.tmpCommands.hasKey(token.string):
+      commandLabel = "var_" & rand(int.high).toHex
+      for element in calc.tmpCommands[token.string]:
+        doTok()
+    else:
+      calc.awaitingCommands.add new Command
+      calc.awaitingCommands[^1].name = token.string
+      calc.awaitingCommands[^1].exec = block:
+        var command: Option[iterator() {.closure.}]
+        for runner in calc.commandRunners:
+          command = calc.runner(token.string)
+          if command.isSome: break
+        command.get
+      calc.awaitingCommands[^1].stepCommand()
+      if calc.awaitingCommands[^1].exec.finished:
+        calc.awaitingCommands.setLen calc.awaitingCommands.len - 1
+  except MapmError as e:
+    var ex = newException(StackLangError, "Error executing math operation: " & e.msg)
+    ex.parent = e
+    raise ex
 
 template execute*(calc: Calc) =
-  while calc.stack.len != 0 and calc.awaitingCommands.len != 0:
-    var i = calc.awaitingCommands[calc.awaitingCommands.high]
-    i.stepCommand()
-    if i.exec.finished:
-      calc.awaitingCommands.setLen(calc.awaitingCommands.len-1)
+  try:
+    while calc.stack.len != 0 and calc.awaitingCommands.len != 0:
+      var i = calc.awaitingCommands[calc.awaitingCommands.high]
+      i.stepCommand()
+      if i.exec.finished:
+        calc.awaitingCommands.setLen(calc.awaitingCommands.len-1)
+  except MapmError as e:
+    var ex = newException(StackLangError, "Error executing math operation: " & e.msg)
+    ex.parent = e
+    raise ex
 
 let
   parser = peg "tokens":
@@ -206,13 +224,16 @@ proc `==`*(a, b: Element): bool =
     of String: a.str == b.str
 
 template calculate(command: untyped): untyped =
-  calc.stack.push(Element(kind: Number, num: float(command), encoding: a_encoding))
+  when typeof(command) is Mapm:
+    calc.stack.push(Element(kind: Number, num: command, encoding: a_encoding))
+  else:
+    calc.stack.push(Element(kind: Number, num: initMapm(command), encoding: a_encoding))
 
 template untilPosition(a: Element, action: untyped): untyped =
   case a.kind:
   of Label:
     var iterationsLeft = 100_000
-    let numeral = try: (num: parseFloat(a.lbl), i: true) except: (num: 0.0, i: false)
+    let numeral = try: (num: initMapm(a.lbl), i: true) except: (num: MMzero.Mapm, i: false)
     while calc.peek.kind != Label or calc.peek.lbl != a.lbl:
       if calc.peek.kind == Number and numeral.i and calc.peek.num == numeral.num:
         break
@@ -222,7 +243,7 @@ template untilPosition(a: Element, action: untyped): untyped =
         raise newException(StackLangError, "Until ran for too many iterations")
   of Number:
     var
-      consumeLen = a.num.int
+      consumeLen = a.num.toInt
       consumed = 0
     if consumeLen >= 0:
       consumeLen = calc.stack.len - consumeLen
@@ -248,7 +269,9 @@ defineCommands(MathCommands, mathDocumentation, runMath):
   Multiply = (n, n, "*"); "Multiplies two numbers":
     calculate a * b
   Divide = (n, n, "/"); "Divides two numbers":
-    calculate a / b
+    if b == 0'm:
+      raise newException(StackLangError, "Can't divide by 0")
+    calculate divide(a, b)
   Sqrt = (n, "sqrt"); "Takes the square root of a number":
     calculate sqrt(a)
   Power = (n, n, "^"); "Takes one number and raises it to the power of another":
@@ -284,9 +307,9 @@ defineCommands(MathCommands, mathDocumentation, runMath):
   Modulo = (n, n, "mod"); "Takes the modulo of one number over another":
     calculate a mod b
   Binom = (n, n, "binom"); "Computes the binomial coefficient":
-    calculate binom(a.int, b.int)
+    calculate binom(a, b)
   Factorial = (n, "fac"); "Computes the factorial of a non-negative number":
-    calculate fac(a.int)
+    calculate fac(a)
   NatLogarithm = (n, "ln"); "Computes the natural logarithm of a number":
     calculate ln(a)
   Logarithm = (n, n, "log"); "Computes the logarithm of the first number to the base of the second":
@@ -304,7 +327,7 @@ defineCommands(StackCommands, stackDocumentation, runStack):
   Rot = (a, "rot"); "Rotates the stack, putting the topmost element on the bottom":
     calc.stack.insert a
   Len = "len"; "Puts the length of the stack on the stack":
-    calc.stack.push(Element(kind: Number, num: calc.stack.len.float))
+    calc.stack.push(Element(kind: Number, num: calc.stack.len.initMapm))
   StackInsert = (a, n|l, "insert"); "Takes an element and a position and inserts the element before that position in the stack":
     # This is a weird way of doing this which doesn't really work with waiting commands
     var tail: seq[Element]
@@ -356,19 +379,19 @@ defineCommands(VariableCommands, variableDocumentation, runVariable):
 
 defineCommands(BitCommands, bitDocumentation, runBits):
   And = (n, n, "and"); "Runs a binary and operation on two numbers":
-    calculate a.int and b.int
+    calculate a.toInt and b.toInt
   Or = (n, n, "or"); "Runs a binary or operation on two numbers":
-    calculate a.int or b.int
+    calculate a.toInt or b.toInt
   Xor = (n, n, "xor"); "Runs a binary xor operation on two numbers":
-    calculate a.int xor b.int
+    calculate a.toInt xor b.toInt
   Not = (n, "not"); "Runs a binary not operation on a number":
-    calculate not a.int
+    calculate not a.toInt
   ShiftLeft = (n, n, "shl"); "Shift a number left by the given amount":
-    calculate a.int shl b.int
+    calculate a.toInt shl b.toInt
   ShiftRight = (n, n, "shr"); "Shift a number right by the given amount":
-    calculate a.int shr b.int
+    calculate a.toInt shr b.toInt
   Truncate (n, n, "truncbin"); "Truncates a binary number":
-    calculate a.int and ((0b1 shl b.int) - 1)
+    calculate a.toInt and ((0b1 shl b.toInt) - 1)
 
 defineCommands(ModificationCommands, modDocumentation, runModifications):
   Round = (n, "round"); "Rounds a number to the closest integer":
@@ -381,8 +404,8 @@ defineCommands(ModificationCommands, modDocumentation, runModifications):
     calculate sgn(a)
   SplitDecimal = (n, "splitdec"); "Takes a number and splits it into an integer and floating part":
     let (intp, flop) = splitDecimal(a)
-    calc.stack.push Element(kind: Number, num: float(intp), encoding: a_encoding)
-    calc.stack.push Element(kind: Number, num: float(flop), encoding: a_encoding)
+    calc.stack.push Element(kind: Number, num: intp, encoding: a_encoding)
+    calc.stack.push Element(kind: Number, num: flop, encoding: a_encoding)
   Trunc = (n, "trunc"); "Truncates the floating part off a number":
     calculate trunc(a)
   Clamp = (n, n, n, "clamp"); "Clamps a value in between two values":
@@ -395,6 +418,8 @@ defineCommands(EncCommands, encDocumentation, runEncoding):
     calc.stack.push(Element(kind: Number, num: a, encoding: Binary))
   Dec = (n, "dec"); "Converts a number to decimal encoding":
     calc.stack.push(Element(kind: Number, num: a, encoding: Decimal))
+  Sci = (n, "sci"); "Converts a number to scientific notation":
+    calc.stack.push(Element(kind: Number, num: a, encoding: Scientific))
 
 defineCommands(Commands, documentation, runCommand):
   Nop = "nop"; "Does nothing":

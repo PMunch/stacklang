@@ -22,41 +22,50 @@ proc intersperse(str: string, every: int, sep = '_'): string =
     result.insert "-"
 
 proc presentNumber(n: Element): string =
-  case n.encoding:
-  of Decimal:
-    let x = n.num
-    case x.classify:
-    of fcNormal:
-      let split = x.splitDecimal
-      if split.floatpart.classify in [fcZero, fcNegZero]:
-        ($split.intpart.int).intersperse(4)
+  try:
+    case n.encoding:
+    of Decimal:
+      let x = n.num
+      #case x.classify:
+      #of fcNormal:
+      #  let split = x.splitDecimal
+      #  if split.floatpart.classify in [fcZero, fcNegZero]:
+      #    ($split.intpart.int).intersperse(4)
+      #  else:
+      #    x.formatFloat(ffDecimal, precision = 32).strip(leading = false, chars = {'0'})
+      #of fcSubnormal: x.formatFloat(ffScientific)
+      #of fcZero: "0"
+      #of fcNan: "nan"
+      #of fcNegZero: "-0"
+      #of fcInf: "inf"
+      #of fcNegInf: "-inf"
+      if abs(x) < 1000'm:
+        $x
       else:
-        x.formatFloat(ffDecimal, precision = 32).strip(leading = false, chars = {'0'})
-    of fcSubnormal: x.formatFloat(ffScientific)
-    of fcZero: "0"
-    of fcNan: "nan"
-    of fcNegZero: "-0"
-    of fcInf: "inf"
-    of fcNegInf: "-inf"
-  of Hexadecimal:
-    var
-      str = n.num.int.toHex
-      first = str[0]
-    str = str.strip(trailing = false, chars = {first})
-    str = str.align(((str.len + 1) div 2) * 2, first)
-    str = str.intersperse(3)
-    "0x" & str
-  of Binary:
-    var
-      str = n.num.int.toBin(64)
-      first = str[0]
-    str = str.strip(trailing = false, chars = {first})
-    str = str.align(((str.len + 8) div 8) * 8, first)
-    str = str.intersperse(9)
-    if str.len == 8 and n.num.int in 0..<16:
-      "0b" & str[4..^1]
-    else:
-      "0b" & str[0..^1]
+        x.formatMapm(separator = '_', decimals = if x.isInt: 0 else: -1)
+    of Scientific:
+      n.num.formatFloat(ffScientific, precision = -2)
+    of Hexadecimal:
+      var
+        str = $n.num.toInt.toHex
+        first = str[0]
+      str = str.strip(trailing = false, chars = {first})
+      str = str.align(((str.len + 1) div 2) * 2, first)
+      str = str.intersperse(3)
+      "0x" & str
+    of Binary:
+      var
+        str = n.num.toInt.toBin(64)
+        first = str[0]
+      str = str.strip(trailing = false, chars = {first})
+      str = str.align(((str.len + 8) div 8) * 8, first)
+      str = str.intersperse(9)
+      if str.len == 8 and n.num.toInt in 0..<16:
+        "0b" & str[4..^1]
+      else:
+        "0b" & str[0..^1]
+  except:
+    $n.num
 
 var
   calc = newCalc()
@@ -168,10 +177,10 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
   Print = (a, "print"); "Takes a number of things or a label to go back to, then prints those things in FIFO order with space separators":
     case a.kind:
     of Number:
-      var pos = if a.num.int >= 0:
-        calc.stack.len - a.num.int
+      var pos = if a.num >= 0'm:
+        calc.stack.len - a.num.toInt
       else:
-        abs(a.num.int)
+        abs(a.num.toInt)
       if pos >= 0:
         var msg = ""
         var first = true
@@ -273,7 +282,16 @@ proc colorize(x: seq[Rune]): seq[Rune] = # {.gcsafe.} =
 proc evaluateString(input: string, output = true) =
   let tokens = tokenize(input)
   commandHistory.add tokens
-  let backup = deepCopy calc
+  # TODO: Replace this section once bug with copying is fixed
+  let backup = new Calc
+  backup.commandRunners = calc.commandRunners
+  backup.stack = calc.stack
+  backup.awaitingCommands = calc.awaitingCommands
+  backup.customCommands = calc.customCommands
+  backup.documentation = calc.documentation
+  backup.tmpCommands = calc.tmpCommands
+  backup.variables = calc.variables
+  backup.noEvalUntil = calc.noEvalUntil
   try:
     for token in tokens:
       calc.evaluateToken(token)
