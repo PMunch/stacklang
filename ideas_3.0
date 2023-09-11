@@ -11,3 +11,12 @@
 - Implement [] for inline commands. [ stops execution of commands while ] goes
   back to the past [ and creates a command out of everything on the stack.
 - Reintroduce label counters and gotos.
+
+Conditionals:
+Syntax `a b <if> <else> <condition>` where `<if>` and `<else>` is a command and
+`<condition>` is one of the defined conditions. E.g:
+`100 2 [ "Smaller than" print ] [ "Larger than" print ] <`. This keeps the code
+close to the condition and you don't have to shuffle the stack if you want to
+perform a condition on the first input to a command. This example also uses the
+new [] syntax to create commands. Perhaps implement an `escape`/`noescape` set
+of commands which does part of what `[`/`]` does but in user code?
