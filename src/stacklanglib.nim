@@ -28,6 +28,7 @@ type
     tmpCommands*: Table[string, seq[Element]]
     variables*: Table[string, Stack[Element]]
     noEvalUntil*: string
+    commandEvalIdx*: seq[int]
     #randoms*: seq[string]
   StackLangError* = object of CatchableError
   InputError* = object of StackLangError
@@ -140,27 +141,29 @@ proc evaluateToken*(calc: Calc, token: Token) =
       return
   try:
     var commandLabel: string
-    template doTok() =
-      case element.kind:
-      of Number, String: calc.stack.add element
-      of Label:
-        if element.lbl[0] != '\\':
-          if element.lbl == "cmdlabel":
-            if commandLabel.len == 0:
-              raise newException(StackLangError, "Unable to call cmdlabel outside command execution")
-            calc.evaluateToken(Token(commandLabel))
+    template executeCommand(command: untyped) =
+      commandLabel = "var_" & rand(int.high).toHex
+      calc.commandEvalIdx.add 0
+      while calc.commandEvalIdx[^1] <= command.high:
+        let element = command[calc.commandEvalIdx[^1]]
+        case element.kind:
+        of Number, String: calc.stack.add element
+        of Label:
+          if element.lbl[0] != '\\':
+            if element.lbl == "cmdlabel":
+              if commandLabel.len == 0:
+                raise newException(StackLangError, "Unable to call cmdlabel outside command execution")
+              calc.evaluateToken(Token(commandLabel))
+            else:
+              calc.evaluateToken(Token(element.lbl))
           else:
-            calc.evaluateToken(Token(element.lbl))
-        else:
-          calc.stack.add Token(element.lbl[1..^1]).toElement
+            calc.stack.add Token(element.lbl[1..^1]).toElement
+        calc.commandEvalIdx[^1] += 1
+      calc.commandEvalIdx.setLen calc.commandEvalIdx.len - 1
     if calc.customCommands.hasKey(token.string):
-      commandLabel = "var_" & rand(int.high).toHex
-      for element in calc.customCommands[token.string]:
-        doTok()
+      executeCommand(calc.customCommands[token.string])
     elif calc.tmpCommands.hasKey(token.string):
-      commandLabel = "var_" & rand(int.high).toHex
-      for element in calc.tmpCommands[token.string]:
-        doTok()
+      executeCommand(calc.tmpCommands[token.string])
     else:
       for runner in calc.commandRunners:
         if calc.runner(token.string): break
