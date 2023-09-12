@@ -174,14 +174,14 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     if not isPipe: echo ""
     stdout.write $a
     calc.stack.push a
-  Print = (a, "print"); "Takes a number of things or a label to go back to, then prints those things in FIFO order with space separators":
+  Print = (n|l, "print"); "Takes a number of things or a label to go back to, then prints those things in FIFO order with space separators":
     case a.kind:
     of Number:
       var pos = if a.num >= 0'm:
         calc.stack.len - a.num.toInt
       else:
-        abs(a.num.toInt)
-      if pos >= 0:
+        abs(a.num.toInt) - 1
+      if pos >= 0 and calc.stack.len > pos:
         var msg = ""
         var first = true
         while calc.stack.len > pos:
@@ -189,6 +189,11 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
           first = false
         if not isPipe: echo ""
         stdout.write msg
+      else:
+        var e = newException(ArgumentError, "Not enough element on stack to print")
+        e.currentCommand = command
+        e.currentElement = a
+        raise e
     of Label:
       var pos = calc.stack.high
       while calc.stack[pos].kind != Label or calc.stack[pos].lbl != a.lbl:
