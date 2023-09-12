@@ -463,6 +463,50 @@ defineCommands(Commands, documentation, runCommand):
     else:
       raiseInputError("No such command", a)
 
+template checkArgs(): untyped =
+  if not calc.isCommand c.Token:
+    raiseInputError("No such command", c)
+  if not calc.isCommand d.Token:
+    raiseInputError("No such command", d)
+
+defineCommands(Conditionals, conditionalsDocumentation, runConditionals):
+  LessThan = (n, n, l, l, "<"); "Takes two numbers and two labels, if the first number is smaller than the second runs the first label, otherwise runs the second label":
+    checkArgs()
+    if a < b:
+      calc.evaluateToken(c.Token)
+    else:
+      calc.evaluateToken(d.Token)
+  GreaterThan = (n, n, l, l, ">"); "Takes two numbers and two labels, if the first number is greater than the second runs the first label, otherwise runs the second label":
+    checkArgs()
+    if a > b:
+      calc.evaluateToken(c.Token)
+    else:
+      calc.evaluateToken(d.Token)
+  LessThanEq = (n, n, l, l, "<="); "Takes two numbers and two labels, if the first number is smaller than or equal to the second runs the first label, otherwise runs the second label":
+    checkArgs()
+    if a <= b:
+      calc.evaluateToken(c.Token)
+    else:
+      calc.evaluateToken(d.Token)
+  GreaterThanEq = (n, n, l, l, ">="); "Takes two numbers and two labels, if the first number is greater than or equal to the second runs the first label, otherwise runs the second label":
+    checkArgs()
+    if a >= b:
+      calc.evaluateToken(c.Token)
+    else:
+      calc.evaluateToken(d.Token)
+  Equal = (n, n, l, l, "=="); "Takes two numbers and two labels, if the numbers are equal runs the first label, otherwise runs the second label":
+    checkArgs()
+    if a == b:
+      calc.evaluateToken(c.Token)
+    else:
+      calc.evaluateToken(d.Token)
+  NotEqual = (n, n, l, l, "!="); "Takes two numbers and two labels, if the numbers are not equal runs the first label, otherwise runs the second label":
+    checkArgs()
+    if a != b:
+      calc.evaluateToken(c.Token)
+    else:
+      calc.evaluateToken(d.Token)
+
 proc isCommand*(calc: Calc, cmd: Token): bool =
   calc.customCommands.hasKey(cmd.string) or
   calc.tmpCommands.hasKey(cmd.string) or (block:
@@ -495,3 +539,4 @@ proc registerDefaults*(calc: Calc) =
   calc.registerCommandRunner runCommand, Commands, "Other", documentation
   calc.registerCommandRunner runStack, StackCommands, "Stack", stackDocumentation
   calc.registerCommandRunner runVariable, VariableCommands, "Variable", variableDocumentation
+  calc.registerCommandRunner runConditionals, Conditionals, "Conditionals", conditionalsDocumentation
