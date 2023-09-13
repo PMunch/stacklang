@@ -2,7 +2,7 @@ import stacklanglib
 import prompt, unicode
 import termstyle
 import strutils except tokenize
-import sequtils, math, tables, options, os
+import sequtils, tables, options, os
 import nancy
 import terminal
 
@@ -125,19 +125,19 @@ proc toEvaluateable(el: Element): string =
 
 defineCommands(ShellCommands, shellDocumentation, runShell):
   Exit = "exit"; "Exits interactive stacklang, saving custom commands":
-    if not isPipe: echo ""
+    if shouldStyle: echo ""
     var output = open(getAppDir() / "stacklang.custom", fmWrite)
     for cmd, doc in calc.documentation["Custom"]:
       output.writeLine "\"", doc.msg, "\" ", cmd, " ", calc.customCommands[cmd].map(toEvaluateable).join(" "), " ", cmd, " mkcmd doccmd"
     output.close()
     quit 0
   History = "history"; "Prints out the entire command history so far":
-    if not isPipe: echo ""
+    if shouldStyle: echo ""
     for i, command in commandHistory[0..^2]:
       stdout.write i, ": ", command, (if i != commandHistory.len - 2: "\n" else: "")
   Help = "help"; "Prints out all documentation":
     var customTable: TerminalTable
-    if not isPipe: echo ""
+    if shouldStyle: echo ""
     for category in calc.documentation.keys:
       var help: TerminalTable
       for _, line in documentationLines(category):
@@ -153,14 +153,14 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
       customTable.echoTable(padding = 3)
   Explain = (l, "explain"); "Prints out the documentation for a single command or category":
     if calc.isCommand a.Token:
-      if not isPipe: echo ""
+      if shouldStyle: echo ""
       let padding = ' '.repeat(3)
       for category in calc.documentation.keys:
         for name, line in documentationLines(category):
           if name == a:
             stdout.write line.join padding
     elif calc.documentation.hasKey a:
-      if not isPipe: echo ""
+      if shouldStyle: echo ""
       for category in calc.documentation.keys:
         if category == a:
           var help: TerminalTable
@@ -171,8 +171,9 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     else:
       raiseInputError("No such command or category", a)
   Display = (a, "display"); "Shows the element on top off the stack without poping it":
-    if not isPipe: echo ""
+    if shouldStyle: echo ""
     stdout.write $a
+    if not shouldStyle: echo ""
     calc.stack.push a
   Print = (n|l, "print"); "Takes a number of things or a label to go back to, then prints those things in FIFO order with space separators":
     case a.kind:
@@ -187,8 +188,9 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
         while calc.stack.len > pos:
           msg.insert(($calc.stack.pop) & (if first: "" else: " "))
           first = false
-        if not isPipe: echo ""
+        if shouldStyle: echo ""
         stdout.write msg
+        if not shouldStyle: echo ""
       else:
         var e = newException(ArgumentError, "Not enough element on stack to print")
         e.currentCommand = command
@@ -202,15 +204,16 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
       var msg = ""
       while calc.stack.len > pos:
         msg.insert(($calc.stack.pop) & " ")
-      if not isPipe: echo ""
+      if shouldStyle: echo ""
       stdout.write msg
+      if not shouldStyle: echo ""
     else: discard
   ListVariables = "list"; "Lists all currently stored variables":
     if calc.variables.len != 0:
       var variableTable: TerminalTable
       for key, value in calc.variables:
         variableTable.add $key, "[ " & value.mapIt($it).join(" ") & " ]"
-      if not isPipe: echo ""
+      if shouldStyle: echo ""
       variableTable.echoTable(padding = 3)
 
 calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
