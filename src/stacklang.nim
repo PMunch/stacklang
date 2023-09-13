@@ -293,12 +293,12 @@ proc evaluateString(input: string, output = true) =
   let backup = new Calc
   backup.commandRunners = calc.commandRunners
   backup.stack = calc.stack
-  #backup.awaitingCommands = calc.awaitingCommands
   backup.customCommands = calc.customCommands
   backup.documentation = calc.documentation
   backup.tmpCommands = calc.tmpCommands
   backup.variables = calc.variables
   backup.noEvalUntil = calc.noEvalUntil
+  backup.commandEvalStack = calc.commandEvalStack
   try:
     for token in tokens:
       calc.evaluateToken(token)
