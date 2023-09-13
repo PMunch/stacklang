@@ -28,7 +28,7 @@ type
     tmpCommands*: Table[string, seq[Element]]
     variables*: Table[string, Stack[Element]]
     noEvalUntil*: string
-    commandEvalIdx*: seq[int]
+    commandEvalStack*: seq[tuple[name: string, idx: int, labelCounts: CountTable[string]]]
     #randoms*: seq[string]
   StackLangError* = object of CatchableError
   InputError* = object of StackLangError
@@ -43,6 +43,11 @@ template raiseInputError(msg, argument: string): untyped =
   var e = newException(InputError, msg)
   e.input = argument
   raise e
+
+proc newArgumentError(msg, command: string, element: Element): ref ArgumentError =
+  result = newException(ArgumentError, msg)
+  result.currentCommand = command
+  result.currentElement = element
 
 proc `$`(x: Element): string =
   result = "Element(kind: " & $x.kind & ", "
@@ -143,9 +148,9 @@ proc evaluateToken*(calc: Calc, token: Token) =
     var commandLabel: string
     template executeCommand(command: untyped) =
       commandLabel = "var_" & rand(int.high).toHex
-      calc.commandEvalIdx.add 0
-      while calc.commandEvalIdx[^1] <= command.high:
-        let element = command[calc.commandEvalIdx[^1]]
+      calc.commandEvalStack.add (token.string, 0, initCountTable[string]())
+      while calc.commandEvalStack[^1].idx <= command.high:
+        let element = command[calc.commandEvalStack[^1].idx]
         case element.kind:
         of Number, String: calc.stack.add element
         of Label:
@@ -158,8 +163,8 @@ proc evaluateToken*(calc: Calc, token: Token) =
               calc.evaluateToken(Token(element.lbl))
           else:
             calc.stack.add Token(element.lbl[1..^1]).toElement
-        calc.commandEvalIdx[^1] += 1
-      calc.commandEvalIdx.setLen calc.commandEvalIdx.len - 1
+        calc.commandEvalStack[^1].idx += 1
+      calc.commandEvalStack.setLen calc.commandEvalStack.len - 1
     if calc.customCommands.hasKey(token.string):
       executeCommand(calc.customCommands[token.string])
     elif calc.tmpCommands.hasKey(token.string):
@@ -193,6 +198,13 @@ proc tokenize*(input: string, withWhitespace = false): seq[Token] =
 
 include operations
 proc isCommand*(calc: Calc, cmd: Token): bool
+
+proc getCurrentCommand*(calc: Calc): seq[Element] =
+  if calc.customCommands.hasKey(calc.commandEvalStack[^1].name):
+    calc.customCommands[calc.commandEvalStack[^1].name]
+  elif calc.tmpCommands.hasKey(calc.commandEvalStack[^1].name):
+    calc.tmpCommands[calc.commandEvalStack[^1].name]
+  else: raise newException(StackLangError, "Current command not found in list of commands")
 
 proc `==`*(a, b: Element): bool =
   if a.kind == b.kind:
@@ -509,6 +521,52 @@ defineCommands(Conditionals, conditionalsDocumentation, runConditionals):
       calc.evaluateToken(c.Token)
     else:
       calc.evaluateToken(d.Token)
+  GoBack = (n|l, "goback"); "Takes a position in a command and moves execution there":
+    let command = calc.getCurrentCommand()
+    case a.kind:
+    of Number:
+      var n = a.num.toInt
+      n =
+        if n < 0: abs(n) - 1
+        else: calc.commandEvalStack[^1].idx - n
+      n -= 1
+      if n < -1 or n > command.high:
+        raise newArgumentError("Index out of range for current command", "goback", a)
+      calc.commandEvalStack[^1].idx = n
+    of Label:
+      calc.commandEvalStack[^1].idx -= 2 # Go back before the argument
+      while command[calc.commandEvalStack[^1].idx] != a:
+        calc.commandEvalStack[^1].idx -= 1 # Search backwards
+        if calc.commandEvalStack[^1].idx < 0:
+          raise newArgumentError("Label not found earlier in the command", "goback", a)
+      calc.commandEvalStack[^1].idx -= 1 # The index is incremented before the next loop, so go back one extra
+      calc.commandEvalStack[^1].labelCounts.inc a.lbl
+    else: discard
+  GoForward = (n|l, "gofwd"); "Takes a position in a command and moves execution there":
+    let command = calc.getCurrentCommand()
+    case a.kind:
+    of Number:
+      var n = a.num.toInt
+      n =
+        if n < 0: command.len + n
+        else: calc.commandEvalStack[^1].idx + n
+      n -= 1
+      if n < -1 or n > command.high:
+        raise newArgumentError("Index out of range for current command", "goback", a)
+      calc.commandEvalStack[^1].idx = n
+    of Label:
+      calc.commandEvalStack[^1].idx += 1 # Go past the current command
+      while command[calc.commandEvalStack[^1].idx] != a:
+        calc.commandEvalStack[^1].idx += 1 # Search forwards
+        if calc.commandEvalStack[^1].idx > command.high:
+          raise newArgumentError("Label not found later in the command", "gofwd", a)
+      calc.commandEvalStack[^1].idx -= 1 # The index is incremented before the next loop, so go back one extra
+      calc.commandEvalStack[^1].labelCounts.inc a.lbl
+    else: discard
+  LabelCount = (l, "lblcnt"); "":
+    calc.stack.push(Element(kind: Number, num: initMapm(calc.commandEvalStack[^1].labelCounts[a]), encoding: Decimal))
+  Return = ("return"); "Stops execution of the current command":
+    calc.commandEvalStack[^1].idx = int.high - 1
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
   calc.customCommands.hasKey(cmd.string) or
