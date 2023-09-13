@@ -455,6 +455,8 @@ defineCommands(Commands, documentation, runCommand):
     elif calc.customCommands.hasKey(a):
       calc.customCommands[b] = calc.customCommands[a]
       calc.customCommands.del a
+      calc.documentation["Custom"][b] = calc.documentation["Custom"][a]
+      calc.documentation["Custom"].del a
     else:
       raiseInputError("No such command", a)
   DocumentCommand = (s, l, "doccmd"); "Takes a string and a label and documents the command by that name":
