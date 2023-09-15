@@ -6,9 +6,8 @@ import sequtils, tables, options, os
 import nancy
 import terminal
 
-let
-  isPipe = not isatty(stdin)
-  shouldStyle = (not isPipe) and commandLineParams().len == 0
+let isPipe = not isatty(stdin)
+var shouldStyle = (not isPipe) and commandLineParams().len == 0
 
 proc intersperse(str: string, every: int, sep = '_'): string =
   var s = str
@@ -26,19 +25,6 @@ proc presentNumber(n: Element): string =
     case n.encoding:
     of Decimal:
       let x = n.num
-      #case x.classify:
-      #of fcNormal:
-      #  let split = x.splitDecimal
-      #  if split.floatpart.classify in [fcZero, fcNegZero]:
-      #    ($split.intpart.int).intersperse(4)
-      #  else:
-      #    x.formatFloat(ffDecimal, precision = 32).strip(leading = false, chars = {'0'})
-      #of fcSubnormal: x.formatFloat(ffScientific)
-      #of fcZero: "0"
-      #of fcNan: "nan"
-      #of fcNegZero: "-0"
-      #of fcInf: "inf"
-      #of fcNegInf: "-inf"
       if abs(x) < 1000'm:
         $x
       else:
@@ -123,7 +109,50 @@ proc toEvaluateable(el: Element): string =
   of String: "\"" & el.str & "\""
   of Number: el.presentNumber
 
+proc print(a: Element, command: string, pipe: File) =
+  template printMessage(): untyped =
+    var
+      msg = ""
+      first = true
+    let wasStyling = shouldStyle
+    shouldStyle = false
+    while calc.stack.len > pos:
+      let val = calc.stack.pop
+      if val.kind == String:
+        msg.insert(val.str.unescape(prefix="", suffix="") & (if first: "" else: " "))
+      else:
+        msg.insert($val & (if first: "" else: " "))
+      first = false
+    shouldStyle = wasStyling
+    if shouldStyle: pipe.writeLine ""
+    pipe.write msg
+    if not shouldStyle: pipe.writeLine ""
+  case a.kind:
+  of Number:
+    var pos = if a.num >= 0'm:
+      calc.stack.len - a.num.toInt
+    else:
+      abs(a.num.toInt) - 1
+    if pos >= 0 and calc.stack.len > pos:
+      printMessage()
+    else:
+      var e = newException(ArgumentError, "Not enough element on stack to print")
+      e.currentCommand = command
+      e.currentElement = a
+      raise e
+  of Label:
+    var pos = calc.stack.high
+    while calc.stack[pos].kind != Label or calc.stack[pos].lbl != a.lbl:
+      pos -= 1
+    pos += 1
+    printMessage()
+  else: discard
+
 defineCommands(ShellCommands, shellDocumentation, runShell):
+  Input = "input"; "Waits for the user to input something and puts that something on the stack":
+    if shouldStyle: echo ""
+    for token in stdin.readLine.tokenize:
+      calc.stack.pushValue token
   Exit = "exit"; "Exits interactive stacklang, saving custom commands":
     if shouldStyle: echo ""
     var output = open(getAppDir() / "stacklang.custom", fmWrite)
@@ -176,38 +205,9 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     if not shouldStyle: echo ""
     calc.stack.push a
   Print = (n|l, "print"); "Takes a number of things or a label to go back to, then prints those things in FIFO order with space separators":
-    case a.kind:
-    of Number:
-      var pos = if a.num >= 0'm:
-        calc.stack.len - a.num.toInt
-      else:
-        abs(a.num.toInt) - 1
-      if pos >= 0 and calc.stack.len > pos:
-        var msg = ""
-        var first = true
-        while calc.stack.len > pos:
-          msg.insert(($calc.stack.pop) & (if first: "" else: " "))
-          first = false
-        if shouldStyle: echo ""
-        stdout.write msg
-        if not shouldStyle: echo ""
-      else:
-        var e = newException(ArgumentError, "Not enough element on stack to print")
-        e.currentCommand = command
-        e.currentElement = a
-        raise e
-    of Label:
-      var pos = calc.stack.high
-      while calc.stack[pos].kind != Label or calc.stack[pos].lbl != a.lbl:
-        pos -= 1
-      pos += 1
-      var msg = ""
-      while calc.stack.len > pos:
-        msg.insert(($calc.stack.pop) & " ")
-      if shouldStyle: echo ""
-      stdout.write msg
-      if not shouldStyle: echo ""
-    else: discard
+    print(a, command, stdout)
+  ErrorPrint = (n|l, "eprint"); "Same as print, but prints to stderr instead of stdout":
+    print(a, command, stderr)
   ListVariables = "list"; "Lists all currently stored variables":
     if calc.variables.len != 0:
       var variableTable: TerminalTable
@@ -333,17 +333,36 @@ if fileExists(getAppDir() / "stacklang.custom"):
     evaluateString(input, false)
   reset commandHistory
 
-proc handleCommandLine() =
-  if commandLineParams().len > 0:
-    for input in commandLineParams():
-      evaluateString(input, false)
-
 proc dumpStack() =
   for e in 0..calc.stack.high:
     let element = calc.stack[e]
     stdout.write element
     if e != calc.stack.high: stdout.write " "
   stdout.write "\n"
+
+proc handleCommandLine() =
+  if commandLineParams().len > 0:
+    if paramStr(1).startsWith "--":
+      case paramStr(1):
+      of "--help":
+        echo "Stacklang v3.0.0"
+        echo "Usage: stacklang [(--script <scriptfile>) | <command>]"
+        echo "  --help                 Prints this help message"
+        echo "  --version              Prints the version number line present above"
+        echo "  --script <scriptfile>  Runs the script present in the file and quits"
+        echo "  <command>              Runs a stacklang command"
+        echo "If no arguments are present, starts an interactive session, to see"
+        echo "language help run the 'help' command"
+      of "--version":
+        echo "Stacklang v3.0.0"
+      of "--script":
+        for input in lines(paramStr(2)):
+          evaluateString(input, false)
+        dumpStack()
+      quit 0
+    else:
+      for input in commandLineParams():
+        evaluateString(input, false)
 
 if not isPipe:
   handleCommandLine()
