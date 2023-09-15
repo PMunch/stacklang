@@ -129,10 +129,10 @@ proc print(a: Element, command: string, pipe: File) =
     if not shouldStyle: pipe.writeLine ""
   case a.kind:
   of Number:
-    var pos = if a.num >= 0'm:
+    var pos = if a.num > 0'm:
       calc.stack.len - a.num.toInt
     else:
-      abs(a.num.toInt) - 1
+      abs(a.num.toInt)
     if pos >= 0 and calc.stack.len > pos:
       printMessage()
     else:
