@@ -299,6 +299,10 @@ proc evaluateString(input: string, output = true) =
   backup.variables = calc.variables
   backup.noEvalUntil = calc.noEvalUntil
   backup.commandEvalStack = calc.commandEvalStack
+  template handle(): untyped =
+    if not output: echo ""; quit 1
+    calc = backup
+    commandHistory.setLen commandHistory.len - 1
   try:
     for token in tokens:
       calc.evaluateToken(token)
@@ -306,22 +310,18 @@ proc evaluateString(input: string, output = true) =
   except ArgumentError as e:
     echo red("\nError consuming element ") & $e.currentElement & red(" from command: ") & e.currentCommand
     stdout.write red e.msg
-    calc = backup
-    commandHistory.setLen commandHistory.len - 1
+    handle()
   except InputError as e:
     echo red("\nError with input: "), e.input
     stdout.write red e.msg
-    calc = backup
-    commandHistory.setLen commandHistory.len - 1
+    handle()
   except StackEmptyError as e:
     stdout.write red("\n" & e.msg)
-    calc = backup
-    commandHistory.setLen commandHistory.len - 1
+    handle()
   except StackLangError as e:
     echo red("\nError with execution")
     stdout.write red e.msg
-    calc = backup
-    commandHistory.setLen commandHistory.len - 1
+    handle()
 
   if output:
     if calc.stack.len != 0:

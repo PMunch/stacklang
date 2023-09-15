@@ -235,8 +235,8 @@ template untilPosition(a: Element, action: untyped): untyped =
       consumeLen = abs(consumeLen)
     if consumeLen <= 0:
       var e = newException(ArgumentError, [
-        "Can't run with no arguments",
-        "Current stack position is lower than requested stopping point"
+        "Current stack position is already at requested position",
+        "Current stack position is lower than requested position"
         ][consumeLen.abs.min(1)])
       e.currentCommand = command # Command comes from the defineCommands macro
       e.currentElement = a
