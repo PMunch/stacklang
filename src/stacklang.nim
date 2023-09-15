@@ -340,7 +340,7 @@ proc dumpStack() =
     if e != calc.stack.high: stdout.write " "
   stdout.write "\n"
 
-proc handleCommandLine() =
+proc handleCommandLine(exit: bool) =
   if commandLineParams().len > 0:
     if paramStr(1).startsWith "--":
       case paramStr(1):
@@ -353,22 +353,27 @@ proc handleCommandLine() =
         echo "  <command>              Runs a stacklang command"
         echo "If no arguments are present, starts an interactive session, to see"
         echo "language help run the 'help' command"
+        quit 0
       of "--version":
         echo "Stacklang v3.0.0"
+        quit 0
       of "--script":
         for input in lines(paramStr(2)):
           evaluateString(input, false)
-        dumpStack()
-      quit 0
+        for input in commandLineParams()[2..^1]:
+          evaluateString(input, false)
+        if exit:
+          dumpStack()
+          quit 0
     else:
       for input in commandLineParams():
         evaluateString(input, false)
+      if exit:
+        dumpStack()
+        quit 0
 
 if not isPipe:
-  handleCommandLine()
-  if commandLineParams().len > 0:
-    dumpStack()
-    quit 0
+  handleCommandLine(true)
 
 var p: Prompt
 if not isPipe:
@@ -380,7 +385,7 @@ while true:
     try:
       if isPipe: stdin.readLine() else: p.readLine()
     except EOFError:
-      handleCommandLine()
+      handleCommandLine(false)
       dumpStack()
       quit 0
   evaluateString(input, shouldStyle)
