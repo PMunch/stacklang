@@ -153,6 +153,14 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     if shouldStyle: echo ""
     for token in stdin.readLine.tokenize:
       calc.stack.pushValue token
+  Exhaust = "exhaust"; "Reads stdin until EOF putting everything on the stack":
+    if not isPipe:
+      raise newException(StackLangError, "Unable to run 'exhaust' when stdin is not a pipe")
+    while true:
+      try:
+        for token in stdin.readLine().tokenize:
+          calc.stack.pushValue token
+      except EOFError: break
   Exit = "exit"; "Exits interactive stacklang, saving custom commands":
     if shouldStyle: echo ""
     var output = open(getAppDir() / "stacklang.custom", fmWrite)
