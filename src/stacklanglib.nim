@@ -588,42 +588,36 @@ template checkArgs(): untyped =
     raiseInputError("No such command", d)
 
 defineCommands(Conditionals, conditionalsDocumentation, runConditionals):
-  LessThan = (n, n, l, l, "<"); "Takes two numbers and two labels, if the first number is smaller than the second runs the first label, otherwise runs the second label":
-    checkArgs()
+  LessThan = (n, n, a, a, "<"); "If the first number is smaller than the second the third token is evaluated, otherwise the fourth":
     if a < b:
-      calc.evaluateToken(c.Token)
+      calc.evaluateElement(c)
     else:
-      calc.evaluateToken(d.Token)
-  GreaterThan = (n, n, l, l, ">"); "Takes two numbers and two labels, if the first number is greater than the second runs the first label, otherwise runs the second label":
-    checkArgs()
+      calc.evaluateElement(d)
+  GreaterThan = (n, n, a, a, ">"); "If the first number is greater than the second the third token is evaluated, otherwise the fourth":
     if a > b:
-      calc.evaluateToken(c.Token)
+      calc.evaluateElement(c)
     else:
-      calc.evaluateToken(d.Token)
-  LessThanEq = (n, n, l, l, "<="); "Takes two numbers and two labels, if the first number is smaller than or equal to the second runs the first label, otherwise runs the second label":
-    checkArgs()
+      calc.evaluateElement(d)
+  LessThanEq = (n, n, a, a, "<="); "If the first number is smaller than or equal to the second the third token is evaluated, otherwise the fourth":
     if a <= b:
-      calc.evaluateToken(c.Token)
+      calc.evaluateElement(c)
     else:
-      calc.evaluateToken(d.Token)
-  GreaterThanEq = (n, n, l, l, ">="); "Takes two numbers and two labels, if the first number is greater than or equal to the second runs the first label, otherwise runs the second label":
-    checkArgs()
+      calc.evaluateElement(d)
+  GreaterThanEq = (n, n, a, a, ">="); "If the first number is greater than or equal to the second the third token is evaluated, otherwise the fourth":
     if a >= b:
-      calc.evaluateToken(c.Token)
+      calc.evaluateElement(c)
     else:
-      calc.evaluateToken(d.Token)
-  Equal = (n, n, l, l, "=="); "Takes two numbers and two labels, if the numbers are equal runs the first label, otherwise runs the second label":
-    checkArgs()
+      calc.evaluateElement(d)
+  Equal = (n, n, a, a, "=="); "If the first number is equal to the second the third token is evaluated, otherwise the fourth":
     if a == b:
-      calc.evaluateToken(c.Token)
+      calc.evaluateElement(c)
     else:
-      calc.evaluateToken(d.Token)
-  NotEqual = (n, n, l, l, "!="); "Takes two numbers and two labels, if the numbers are not equal runs the first label, otherwise runs the second label":
-    checkArgs()
+      calc.evaluateElement(d)
+  NotEqual = (n, n, a, a, "!="); "If the first number is not equal to the second the third token is evaluated, otherwise the fourth":
     if a != b:
-      calc.evaluateToken(c.Token)
+      calc.evaluateElement(c)
     else:
-      calc.evaluateToken(d.Token)
+      calc.evaluateElement(d)
 
 proc isCommand*(calc: Calc, cmd: Token): bool =
   calc.customCommands.hasKey(cmd.string) or
