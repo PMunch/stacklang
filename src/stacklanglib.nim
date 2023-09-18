@@ -163,13 +163,21 @@ proc evaluateToken*(calc: Calc, token: Token) =
     elif calc.tmpCommands.hasKey(token.string):
       executeCommand(calc.tmpCommands[token.string])
     else:
-      for runner in calc.commandRunners:
-        if calc.runner(token.string): break
+      # Execute all runners, if no runner wants our token, push it to the stack
+      block runners:
+        for runner in calc.commandRunners:
+          if calc.runner(token.string): break runners
+        calc.stack.pushValue(token)
   except MapmError as e:
     var ex = newException(StackLangError, "Error executing math operation: " & e.msg)
     ex.parent = e
     raise ex
   # TODO: Clean temporary commands?
+
+proc evaluateElement*(calc: Calc, element: Element) =
+  case element.kind:
+  of Label: calc.evaluateToken(element.lbl.Token)
+  of String, Number: calc.stack.add(element)
 
 let
   parser = peg "tokens":

@@ -220,8 +220,8 @@ calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDo
 
 
 calc.registerCommandRunner(proc (calc: Calc, argument: string): bool =
-  result = true
   if argument[0] == '!':
+    result = true
     try:
       var
         parts = argument[1..^1].split(':')
@@ -263,8 +263,6 @@ calc.registerCommandRunner(proc (calc: Calc, argument: string): bool =
         raiseInputError("Can't expand command, too many segments", argument)
     except ValueError:
       raiseInputError("Can't expand command, unable to parse segments", argument)
-  else:
-    calc.stack.pushValue argument.Token
 )
 
 proc colorize(x: seq[Rune]): seq[Rune] = # {.gcsafe.} =
