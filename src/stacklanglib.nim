@@ -338,7 +338,13 @@ defineCommands(StackCommands, stackDocumentation, runStack):
   Swap = (a, a, "swap"); "Swaps the two topmost elements of the stack":
     calc.stack.push b
     calc.stack.push a
-  Rot = (a, "rot"); "Rotates the stack, putting the topmost element on the bottom":
+  Rot = ("rot"); "Rotates the stack, putting the bottommost element on top":
+    if calc.stack.len != 0:
+      calc.stack.push calc.stack[0]
+      calc.stack.delete(0)
+    else:
+      raise newException(StackEmptyError, "The stack didn't have sufficient elements")
+  ReverseRot = (a, "revrot"); "Rotates the stack, putting the topmost element on the bottom":
     calc.stack.insert a
   Len = "len"; "Puts the length of the stack on the stack":
     calc.stack.push(Element(kind: Number, num: calc.stack.len.initMapm))
@@ -447,6 +453,8 @@ template verifyCommand(): untyped =
 defineCommands(Commands, documentation, runCommand):
   Nop = "nop"; "Does nothing":
     discard
+  Rand = "rand"; "Adds a random number between 0 and 1 to the stack":
+    calc.stack.push(Element(kind: Number, num: rand(), encoding: Decimal))
   NoEval = "noeval"; "Stops evaluation, all commands will simply be pushed to the stack":
     calc.noEvalUntil = "eval"
   NoEvalUntil = (l, "noevaluntil"); "Like noeval, but accepts a label which restarts execution before being evaluated":
