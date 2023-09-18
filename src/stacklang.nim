@@ -290,15 +290,17 @@ proc evaluateString(input: string, output = true) =
   let tokens = tokenize(input)
   commandHistory.add tokens
   # TODO: Replace this section once bug with copying is fixed
-  let backup = new Calc
-  backup.commandRunners = calc.commandRunners
-  backup.stack = calc.stack
-  backup.customCommands = calc.customCommands
-  backup.documentation = calc.documentation
-  backup.tmpCommands = calc.tmpCommands
-  backup.variables = calc.variables
-  backup.noEvalUntil = calc.noEvalUntil
-  backup.commandEvalStack = calc.commandEvalStack
+  var backup: Calc
+  if output:
+    backup = new Calc
+    backup.commandRunners = calc.commandRunners
+    backup.stack = calc.stack
+    backup.customCommands = calc.customCommands
+    backup.documentation = calc.documentation
+    backup.tmpCommands = calc.tmpCommands
+    backup.variables = calc.variables
+    backup.noEvalUntil = calc.noEvalUntil
+    backup.commandEvalStack = calc.commandEvalStack
   template handle(): untyped =
     if not output: echo ""; quit 1
     calc = backup

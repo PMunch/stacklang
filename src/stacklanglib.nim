@@ -224,7 +224,7 @@ template untilPosition(a: Element, action: untyped): untyped =
       action
       dec iterationsLeft
       if iterationsLeft == 0:
-        raise newException(StackLangError, "Until ran for too many iterations")
+        raise newException(StackLangError, "Command ran for too many iterations")
   of Number:
     var
       consumeLen = a.num.toInt
@@ -233,18 +233,47 @@ template untilPosition(a: Element, action: untyped): untyped =
       consumeLen = calc.stack.len - consumeLen
     else:
       consumeLen = abs(consumeLen)
-    if consumeLen <= 0:
-      var e = newException(ArgumentError, [
-        "Current stack position is already at requested position",
-        "Current stack position is lower than requested position"
-        ][consumeLen.abs.min(1)])
+    if consumeLen == 0:
+      var e = newException(ArgumentError, "Current stack position is already at requested position")
       e.currentCommand = command # Command comes from the defineCommands macro
       e.currentElement = a
       raise e
+    elif consumeLen < 0:
+      consumeLen = calc.stack.len + abs(consumeLen) - 1
     while consumed != consumeLen:
       action
       consumed += 1
   else: discard
+
+proc getPosition(calc: Calc, a: Element, command: string): int =
+  case a.kind:
+  of Label:
+    let numeral = try: (num: initMapm(a.lbl), i: true) except: (num: MMzero.Mapm, i: false)
+    result = calc.stack.high
+    while calc.stack[result].kind != Label or calc.stack[result].lbl != a.lbl:
+      if numeral.i and calc.stack[result].kind == Number and calc.stack[result].num == numeral.num:
+        break
+      result -= 1
+    result += 1
+  of Number:
+    let num = a.num.toInt
+    if num >= 0:
+      result = num
+    else:
+      result = calc.stack.len + num
+    if result >= calc.stack.len:
+      var e = newException(ArgumentError, [
+        "Current stack position is already at requested position",
+        "Current stack position is lower than requested position"
+        ][min(result - calc.stack.len, 1)])
+      e.currentCommand = command
+      e.currentElement = a
+      raise e
+  else:
+    var e = newException(ArgumentError, "Can't be called with a string")
+    e.currentCommand = command
+    e.currentElement = a
+    raise e
 
 defineCommands(MathCommands, mathDocumentation, runMath):
   Plus = (n, n, "+"); "Adds two numbers":
@@ -314,25 +343,30 @@ defineCommands(StackCommands, stackDocumentation, runStack):
   Len = "len"; "Puts the length of the stack on the stack":
     calc.stack.push(Element(kind: Number, num: calc.stack.len.initMapm))
   StackInsert = (a, n|l, "insert"); "Takes an element and a position and inserts the element before that position in the stack":
-    # This is a weird way of doing this which doesn't really work with waiting commands
-    var tail: seq[Element]
-    untilPosition(b):
-      tail.insert calc.pop()
-    calc.stack.push a
-    calc.stack &= tail[0..^1]
+    let pos = calc.getPosition(b, command)
+    calc.stack.insert(a, pos)
   Delete = (n|l, "delete"); "Deletes the element of the stack at a given position":
-    var tail: seq[Element]
-    untilPosition(a):
-      tail.insert calc.pop()
-    calc.stack &= tail[1..^1]
+    let pos = calc.getPosition(a, command)
+    calc.stack.delete(pos)
+  Fetch = (n|l, "fetch"); "Takes the element of the stack at a given position and puts it on top":
+    let pos = calc.getPosition(a, command)
+    calc.stack.push calc.stack[pos]
+    calc.stack.delete(pos)
+  Position = (n|l, "pos"); "Puts the index of the position on the stack":
+    var pos = calc.getPosition(a, command)
+    if a.kind == Label: pos -= 1
+    calc.stack.push(Element(kind: Number, num: pos.initMapm, encoding: Decimal))
 
 defineCommands(VariableCommands, variableDocumentation, runVariable):
   VariablePush = (a, l, "varpush"); "Takes an element and a label and pushes the element to the stack named by the label":
     calc.variables.mgetOrPut(b, @[]).add a
   VariableTake = (n|l, l, "vartake"); "Takes a position and a label and moves elements from the stack to the variable until it's at the position":
-    let spos = calc.variables.mgetOrPut(b, @[]).len
-    untilPosition(a):
-      calc.variables[b].insert(calc.pop(), spos)
+    let pos = calc.getPosition(a, command)
+    if calc.variables.hasKey(b):
+      calc.variables[b] &= calc.stack[pos..^1]
+    else:
+      calc.variables[b] = calc.stack[pos..^1]
+    calc.stack.setLen(pos)
   VariablePop = (l, "varpop"); "Takes a label and pops an element of the stack named by that label":
     if not calc.variables.hasKey(a):
       raiseInputError("No variable with this name", a)
