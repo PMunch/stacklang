@@ -9,7 +9,7 @@ calculations should always be the core focus. I've been using this calculator
 now since 2019 and it's just gone through the third major rewrite to version 3.
 If you're interested to learn more, let's dive into it. This README should
 contain pretty much everything there is to know about this "language" but
-doesn't really go into detail about how stack based programming does.
+doesn't really go into detail about how stack based programming works.
 
 ## Running Stacklang
 The easiest way to run Stacklang is simply to execute the binary. This leaves
