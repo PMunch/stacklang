@@ -149,9 +149,14 @@ proc print(a: Element, command: string, pipe: File) =
   else: discard
 
 defineCommands(ShellCommands, shellDocumentation, runShell):
-  Input = "input"; "Waits for the user to input something and puts that something on the stack":
+  Input = "input"; "Reads a line from stdin and puts all tokens on the stack. Doesn't do anything on EOF, puts an empty string on an empty line":
     if shouldStyle: echo ""
-    for token in stdin.readLine.tokenize:
+    let line =
+      try:
+        var line = stdin.readLine
+        if line.len == 0: "\"\"" else: line
+      except EOFError: ""
+    for token in line.tokenize:
       calc.stack.pushValue token
   Exhaust = "exhaust"; "Reads stdin until EOF putting everything on the stack":
     if not isPipe:
@@ -161,6 +166,13 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
         for token in stdin.readLine().tokenize:
           calc.stack.pushValue token
       except EOFError: break
+  Eof = (a, a, "eof"); "Checks if input is at the end of the file, runs the first label if it is, otherwise the second":
+    if not isPipe:
+      raise newException(StackLangError, "Unable to run 'eof' when stdin is not a pipe")
+    if stdin.endOfFile:
+      calc.evaluateElement(a)
+    else:
+      calc.evaluateElement(b)
   Exit = "exit"; "Exits interactive stacklang, saving custom commands":
     if shouldStyle: echo ""
     var output = open(getAppDir() / "stacklang.custom", fmWrite)
