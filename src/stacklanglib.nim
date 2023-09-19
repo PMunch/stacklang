@@ -226,8 +226,8 @@ template untilPosition(a: Element, action: untyped): untyped =
   of Label:
     var iterationsLeft = 100_000
     let numeral = try: (num: initMapm(a.lbl), i: true) except: (num: MMzero.Mapm, i: false)
-    while calc.peek.kind != Label or calc.peek.lbl != a.lbl:
-      if calc.peek.kind == Number and numeral.i and calc.peek.num == numeral.num:
+    while calc.stack.len == 0 or calc.peek.kind != Label or calc.peek.lbl != a.lbl:
+      if calc.stack.len != 0 and calc.peek.kind == Number and numeral.i and calc.peek.num == numeral.num:
         break
       action
       dec iterationsLeft
