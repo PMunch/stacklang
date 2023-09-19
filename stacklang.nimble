@@ -1,6 +1,6 @@
 # Package
 
-version       = "0.1.0"
+version       = "3.0.0"
 author        = "PMunch"
 description   = "An easy to use programmable RPN calculator"
 license       = "MIT"
@@ -11,7 +11,7 @@ installExt    = @["nim"]
 
 # Dependencies
 
-requires "nim >= 0.19.9"
+requires "nim >= 2.0.0"
 requires "termstyle"
 requires "https://github.com/PMunch/nim-prompt >= 0.1.2"
 requires "npeg"
