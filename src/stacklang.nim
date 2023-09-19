@@ -175,7 +175,7 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
       calc.evaluateElement(b)
   Exit = "exit"; "Exits interactive stacklang, saving custom commands":
     if shouldStyle: echo ""
-    var output = open(getAppDir() / "stacklang.custom", fmWrite)
+    var output = open(getAppDir() / "custom.sl", fmWrite)
     for cmd, doc in calc.documentation["Custom"]:
       output.writeLine "\"", doc.msg, "\" ", cmd, " ", calc.customCommands[cmd].map(toEvaluateable).join(" "), " ", cmd, " mkcmd doccmd"
     output.close()
@@ -348,8 +348,8 @@ proc evaluateString(input: string, output = true) =
       echo ""
       stdout.write "[ " &  calc.stack.map(`$`).join("  ") & " ]"
 
-if fileExists(getAppDir() / "stacklang.custom"):
-  for input in lines(getAppDir() / "stacklang.custom"):
+if fileExists(getAppDir() / "custom.sl"):
+  for input in lines(getAppDir() / "custom.sl"):
     evaluateString(input, false)
   reset commandHistory
 
@@ -360,7 +360,7 @@ proc dumpStack() =
     if e != calc.stack.high: stdout.write " "
   stdout.write "\n"
 
-proc handleCommandLine(exit: bool) =
+proc handleCommandLine() =
   if commandLineParams().len > 0:
     if paramStr(1).startsWith "--":
       case paramStr(1):
@@ -382,18 +382,17 @@ proc handleCommandLine(exit: bool) =
           evaluateString(input, false)
         for input in commandLineParams()[2..^1]:
           evaluateString(input, false)
-        if exit:
+        if not isPipe:
           dumpStack()
           quit 0
     else:
       for input in commandLineParams():
         evaluateString(input, false)
-      if exit:
+      if not isPipe:
         dumpStack()
         quit 0
 
-if not isPipe:
-  handleCommandLine(true)
+handleCommandLine()
 
 var p: Prompt
 if not isPipe:
@@ -405,7 +404,6 @@ while true:
     try:
       if isPipe: stdin.readLine() else: p.readLine()
     except EOFError:
-      handleCommandLine(false)
       dumpStack()
       quit 0
   evaluateString(input, shouldStyle)
