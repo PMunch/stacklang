@@ -200,25 +200,26 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
     if customTable.rows > 0:
       echo "Custom commands:"
       customTable.echoTable(padding = 3)
-  Explain = (l, "explain"); "Prints out the documentation for a single command or category":
-    if calc.isCommand a.Token:
+  Explain = (l|s, "explain"); "Prints out the documentation for a single command or category":
+    if a.kind == Label and calc.isCommand a.lbl.Token:
       if shouldStyle: echo ""
       let padding = ' '.repeat(3)
       for category in calc.documentation.keys:
         for name, line in documentationLines(category):
-          if name == a:
+          if name == a.lbl:
             stdout.write line.join padding
-    elif calc.documentation.hasKey a:
+    elif (a.kind == Label and calc.documentation.hasKey a.lbl) or
+         (a.kind == String and calc.documentation.hasKey a.str):
       if shouldStyle: echo ""
       for category in calc.documentation.keys:
-        if category == a:
+        if category == (if a.kind == Label: a.lbl else: a.str):
           var help: TerminalTable
           for _, line in documentationLines(category):
             help.add line
           if help.rows > 0:
             help.echoTable(padding = 3)
     else:
-      raiseInputError("No such command or category", a)
+      raiseInputError("No such command or category", (if a.kind == Label: a.lbl else: a.str))
   Display = (a, "display"); "Shows the element on top off the stack without poping it":
     if shouldStyle: echo ""
     stdout.write $a
