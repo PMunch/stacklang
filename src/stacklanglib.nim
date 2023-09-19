@@ -541,10 +541,11 @@ defineCommands(Commands, documentation, runCommand):
         raise newArgumentError("Index out of range for current command", "goback", a)
       calc.commandEvalStack[^1].idx = n
     of Label:
-      calc.commandEvalStack[^1].idx -= 2 # Go back before the argument
+      let oldIdx = calc.commandEvalStack[^1].idx
+      calc.commandEvalStack[^1].idx = 0 # Go back to the first argument
       while command[calc.commandEvalStack[^1].idx] != a:
-        calc.commandEvalStack[^1].idx -= 1 # Search backwards
-        if calc.commandEvalStack[^1].idx < 0:
+        calc.commandEvalStack[^1].idx += 1 # Search forwards
+        if calc.commandEvalStack[^1].idx >= oldIdx:
           raise newArgumentError("Label not found earlier in the command", "goback", a)
       calc.commandEvalStack[^1].idx -= 1 # The index is incremented before the next loop, so go back one extra
       calc.commandEvalStack[^1].labelCounts.inc a.lbl
@@ -563,10 +564,11 @@ defineCommands(Commands, documentation, runCommand):
         raise newArgumentError("Index out of range for current command", "goback", a)
       calc.commandEvalStack[^1].idx = n
     of Label:
-      calc.commandEvalStack[^1].idx += 1 # Go past the current command
+      let oldIdx = calc.commandEvalStack[^1].idx
+      calc.commandEvalStack[^1].idx = command.high # Go to the end
       while command[calc.commandEvalStack[^1].idx] != a:
-        calc.commandEvalStack[^1].idx += 1 # Search forwards
-        if calc.commandEvalStack[^1].idx > command.high:
+        calc.commandEvalStack[^1].idx -= 1 # Search backwards
+        if calc.commandEvalStack[^1].idx <= oldIdx:
           raise newArgumentError("Label not found later in the command", "gofwd", a)
       calc.commandEvalStack[^1].idx -= 1 # The index is incremented before the next loop, so go back one extra
       calc.commandEvalStack[^1].labelCounts.inc a.lbl
