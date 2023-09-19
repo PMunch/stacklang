@@ -359,14 +359,14 @@ defineCommands(StackCommands, stackDocumentation, runStack):
   StackInsert = (a, n|l, "insert"); "Takes an element and a position and inserts the element before that position in the stack":
     let pos = calc.getPosition(b, command)
     calc.stack.insert(a, pos)
-  Delete = (n|l, "delete"); "Deletes the element of the stack at a given position":
+  Delete = (n|l, "delete"); "Deletes the element off the stack at a given position":
     let pos = calc.getPosition(a, command)
     calc.stack.delete(pos)
-  Fetch = (n|l, "fetch"); "Takes the element of the stack at a given position and puts it on top":
+  Fetch = (n|l, "fetch"); "Takes the element off the stack at a given position and puts it on top":
     let pos = calc.getPosition(a, command)
     calc.stack.push calc.stack[pos]
     calc.stack.delete(pos)
-  Position = (n|l, "pos"); "Puts the index of the position on the stack":
+  Position = (n|l, "pos"); "Puts the index of the position given on the stack":
     var pos = calc.getPosition(a, command)
     if a.kind == Label: pos -= 1
     calc.stack.push(Element(kind: Number, num: pos.initMapm, encoding: Decimal))
