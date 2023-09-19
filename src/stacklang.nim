@@ -240,51 +240,52 @@ defineCommands(ShellCommands, shellDocumentation, runShell):
 calc.registerCommandRunner runShell, ShellCommands, "Interactive shell", shellDocumentation
 
 
-calc.registerCommandRunner(proc (calc: Calc, argument: string): bool =
-  if argument[0] == '!':
-    result = true
-    try:
-      var
-        parts = argument[1..^1].split(':')
-        pos = if parts[0] == "!": -1 else: parseInt(parts[0])
-      if commandHistory.high == pos and parts.len == 1:
-        raiseInputError("Can't expand current command", argument)
-      if pos < 0:
-        pos += commandHistory.high
-      if commandHistory.high < pos or pos < 0:
-        raiseInputError("Can't expand command, not enough commands", argument)
-      case parts.len:
-      of 1:
-        commandHistory[^1] = @[]
-        for token in commandHistory[pos]:
-          calc.evaluateToken token
-          commandHistory[^1].add token
-      of 2:
-        let subrange = parts[1].split('-')
-        case subrange.len:
+if not isPipe:
+  calc.registerCommandRunner(proc (calc: Calc, argument: string): bool =
+    if argument[0] == '!':
+      result = true
+      try:
+        var
+          parts = argument[1..^1].split(':')
+          pos = if parts[0] == "!": -1 else: parseInt(parts[0])
+        if commandHistory.high == pos and parts.len == 1:
+          raiseInputError("Can't expand current command", argument)
+        if pos < 0:
+          pos += commandHistory.high
+        if commandHistory.high < pos or pos < 0:
+          raiseInputError("Can't expand command, not enough commands", argument)
+        case parts.len:
         of 1:
-          let sub = parseInt(parts[1])
-          if commandHistory[pos].high < sub:
-            raiseInputError("Can't expand command, no such sub-command", argument)
-          calc.evaluateToken commandHistory[pos][sub]
-          commandHistory[^1] = @[commandHistory[pos][sub]]
-        of 2:
-          let
-            start = parseInt(subrange[0])
-            stop = if subrange[1].len > 0: parseInt(subrange[1]) else: commandHistory[pos].high
-          if stop < start or commandHistory[pos].high < start or commandHistory[pos].high > stop:
-            raiseInputError("Can't expand command, no such sub-command", argument)
           commandHistory[^1] = @[]
-          for i in start..stop:
-            calc.evaluateToken commandHistory[pos][i]
-            commandHistory[^1].add commandHistory[pos][i]
+          for token in commandHistory[pos]:
+            calc.evaluateToken token
+            commandHistory[^1].add token
+        of 2:
+          let subrange = parts[1].split('-')
+          case subrange.len:
+          of 1:
+            let sub = parseInt(parts[1])
+            if commandHistory[pos].high < sub:
+              raiseInputError("Can't expand command, no such sub-command", argument)
+            calc.evaluateToken commandHistory[pos][sub]
+            commandHistory[^1] = @[commandHistory[pos][sub]]
+          of 2:
+            let
+              start = parseInt(subrange[0])
+              stop = if subrange[1].len > 0: parseInt(subrange[1]) else: commandHistory[pos].high
+            if stop < start or commandHistory[pos].high < start or commandHistory[pos].high > stop:
+              raiseInputError("Can't expand command, no such sub-command", argument)
+            commandHistory[^1] = @[]
+            for i in start..stop:
+              calc.evaluateToken commandHistory[pos][i]
+              commandHistory[^1].add commandHistory[pos][i]
+          else:
+            raiseInputError("Can't expand command, unable to parse segments", argument)
         else:
-          raiseInputError("Can't expand command, unable to parse segments", argument)
-      else:
-        raiseInputError("Can't expand command, too many segments", argument)
-    except ValueError:
-      raiseInputError("Can't expand command, unable to parse segments", argument)
-)
+          raiseInputError("Can't expand command, too many segments", argument)
+      except ValueError:
+        raiseInputError("Can't expand command, unable to parse segments", argument)
+  )
 
 proc colorize(x: seq[Rune]): seq[Rune] = # {.gcsafe.} =
   for part in ($x).tokenize(withWhitespace = true):

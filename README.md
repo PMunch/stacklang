@@ -561,3 +561,23 @@ is still quite good depending on your scenario.
 The Stacklang binary compiled for the benchmark above and stripped with
 `strip -s` comes out at 555Kb. It only links to libc and libm. Statically linked
 it comes up to about 1.7M.
+
+## Stacklang vs. Stacklanglib
+As mentioned Stacklang is actually possible to use as a library. The shell
+application uses the library and extends it with certain functions. So what
+exactly comes from where? Looking at the help message everything which isn't in
+the "Interactive shell commands" section comes from the library. So when
+importing the library you get everything to do with variables, commands, and of
+course all the math operations. The `custom.sl` runner is also part of the
+interactive shell, so you will have to read that in yourself if you want to use
+it in your application. Besides all this the interactive shell also supports
+bash-like history expansion.
+
+### History expansion
+Like bash, Stacklang supports history expansion. These only work in the
+interactive shell, and work on each "line" of commands. You can use `!!` to
+repeat the last line. You can use `!-2` to execute the second to last line. Or
+you can use `!0` to run the first line. You can also expand parts of a line so
+`!0:1` will take the second token of the first line (they are zero indexed). And
+you ran pass a range so `!0:1-2` will take the second and third element. Or just
+`!0:1-` to take everything from the second command onwards.
